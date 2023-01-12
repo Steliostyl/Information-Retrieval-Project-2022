@@ -1,0 +1,90 @@
+from elasticsearch import Elasticsearch
+from elasticsearch.helpers import bulk
+import pandas as pd
+
+def _input(message, input_type=str):
+    """Helper function that forces user
+    to enter a predefined type of input."""
+
+    while True:
+        try:
+            return input_type (input(message))
+        except: pass
+
+def createIndex(es: Elasticsearch) -> None:
+  """Creates a book index."""
+
+  mappings = {
+    "properties": {
+      "isbn": {"type": "text", "analyzer": "keyword"},
+      "book_title": {"type": "text", "analyzer": "english"},
+      "book_author": {"type": "text", "analyzer": "standard"},
+      "year_of_publication": {"type": "integer"},
+      "publisher": {"type": "text", "analyzer": "standard"},
+      "summary": {"type": "text", "analyzer": "english"},
+      "category": {"type": "text", "analyzer": "standard"}
+    }
+  }
+
+  es.indices.delete(index="books")
+  es.indices.create(index="books", mappings=mappings)
+
+def insertData(es: Elasticsearch, filename: str = "Files/BX-Books.csv") -> str:
+  """Parses the data of a specified csv file and
+  inserts a sample of the data into Elasticsearch.
+  Returns the number of entries after insertion."""
+
+  dataframe = (
+    pd.read_csv(filename)
+      .dropna()
+      .sample(5000, random_state=42)
+      .reset_index()
+  )
+
+  # Bulk insert data from CSV file
+
+  bulk_data = []
+  for i,row in dataframe.iterrows():
+      bulk_data.append(
+          {
+              "_index": "books",
+              "_id": i,
+              "_source": { 
+                "isbn": row["isbn"],
+                "book_title": row["book_title"],
+                "book_author": row["book_author"],
+                "year_of_publication": row["year_of_publication"],
+                "publisher": row["publisher"],
+                "summary": row["summary"],
+                "category": row["category"]
+              }
+          }
+      )
+  bulk(es, bulk_data)
+
+  es.indices.refresh(index="books")
+  resp = es.cat.count(index="books", format="json")
+  return resp
+
+def makeQuery(es: Elasticsearch) -> list:
+  """Creates a query and returns Elasticsearch's answer."""
+
+  search_string = input("Enter search string:")
+  #user_id = _input("Enter your user ID (must be an integer): ", int)
+
+  query_body = {
+    "query": {
+        "multi_match": {
+            "query": search_string,
+            "type": "most_fields",
+            "fields": ["book_title^1.5", "summary"],
+        }
+    }
+  }
+
+  answer = es.search(
+    index = "books",
+    body = query_body
+  )
+
+  return answer["hits"]["hits"]
