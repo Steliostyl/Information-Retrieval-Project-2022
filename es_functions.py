@@ -11,9 +11,11 @@ def _input(message, input_type=str):
             return input_type (input(message))
         except: pass
 
-def createIndex(es: Elasticsearch) -> None:
-  """Creates a book index."""
+def createIndex(es: Elasticsearch, idx_name: str = "books") -> None:
+  """Creates a new book index, deleting
+  any pre-existing with the same name."""
 
+  # Define the mappings of the books index.
   mappings = {
     "properties": {
       "isbn": {"type": "text", "analyzer": "keyword"},
@@ -26,14 +28,17 @@ def createIndex(es: Elasticsearch) -> None:
     }
   }
 
-  es.indices.delete(index="books")
-  es.indices.create(index="books", mappings=mappings)
+  # Delete any pre-existing index with the same name
+  es.indices.delete(index=idx_name)
+  # Create a new index named idx_name with the defined mappings
+  es.indices.create(index=idx_name, mappings=mappings)
 
 def insertData(es: Elasticsearch, filename: str = "Files/BX-Books.csv") -> str:
   """Parses the data of a specified csv file and
   inserts a sample of the data into Elasticsearch.
   Returns the number of entries after insertion."""
 
+  # Parse a sample from a given CSV dataset
   dataframe = (
     pd.read_csv(filename)
       .dropna()
@@ -41,8 +46,7 @@ def insertData(es: Elasticsearch, filename: str = "Files/BX-Books.csv") -> str:
       .reset_index()
   )
 
-  # Bulk insert data from CSV file
-
+  # Create a list containing the parsed rows from the CSV file
   bulk_data = []
   for i,row in dataframe.iterrows():
       bulk_data.append(
@@ -60,8 +64,10 @@ def insertData(es: Elasticsearch, filename: str = "Files/BX-Books.csv") -> str:
               }
           }
       )
+  # Bulk insert the rows into ElasticSearch
   bulk(es, bulk_data)
 
+  # Refresh the books index and return the number of items in it.
   es.indices.refresh(index="books")
   resp = es.cat.count(index="books", format="json")
   return resp
@@ -69,9 +75,13 @@ def insertData(es: Elasticsearch, filename: str = "Files/BX-Books.csv") -> str:
 def makeQuery(es: Elasticsearch) -> list:
   """Creates a query and returns Elasticsearch's answer."""
 
+  # Input search string and user ID
   search_string = input("Enter search string:")
   #user_id = _input("Enter your user ID (must be an integer): ", int)
 
+  # Create query body using inputs. Using multi_match we check multiple fields
+  # of an entry for the given search string and the final score is calculated
+  # by adding the (weighted) score of the fields.
   query_body = {
     "query": {
         "multi_match": {
@@ -82,9 +92,11 @@ def makeQuery(es: Elasticsearch) -> list:
     }
   }
 
+  # Make the query to ElasticSearch
   answer = es.search(
     index = "books",
     body = query_body
   )
 
+  # Return the results with the higher scores
   return answer["hits"]["hits"]
