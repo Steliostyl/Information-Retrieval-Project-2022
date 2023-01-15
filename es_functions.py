@@ -42,7 +42,7 @@ def insertData(es: Elasticsearch, filename: str = "Files/BX-Books.csv") -> str:
   dataframe = (
     pd.read_csv(filename)
       .dropna()
-      .sample(5000, random_state=42)
+      #.sample(5000, random_state=42)
       .reset_index()
   )
 
@@ -77,7 +77,7 @@ def makeQuery(es: Elasticsearch) -> list:
 
   # Input search string and user ID
   search_string = input("Enter search string:")
-  #user_id = _input("Enter your user ID (must be an integer): ", int)
+  user_id = _input("Enter your user ID (must be an integer): ", int)
 
   # Create query body using inputs. Using multi_match we check multiple fields
   # of an entry for the given search string and the final score is calculated
@@ -87,16 +87,17 @@ def makeQuery(es: Elasticsearch) -> list:
         "multi_match": {
             "query": search_string,
             "type": "most_fields",
-            "fields": ["book_title^1.5", "summary"],
+            "fields": ["book_title^1.5", "summary"]
         }
     }
   }
 
   # Make the query to ElasticSearch
-  answer = es.search(
+  es_reply = es.search(
     index = "books",
-    body = query_body
+    body = query_body,
+    size = 10000
   )
 
   # Return the results with the higher scores
-  return answer["hits"]["hits"]
+  return (es_reply, user_id)
