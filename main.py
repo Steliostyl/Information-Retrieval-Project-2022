@@ -3,9 +3,16 @@ import es_functions
 import functions
 from elasticsearch import Elasticsearch
 
+ES_PASSWORD = "-wq4MlKQgAgo+fnKLy=U"
+CERT_FINGERPRINT = "dd:4d:bc:9e:34:74:70:c5:8c:c9:40:b6:eb:d8:c7:89:07:dd:2e:fa:ff:a2:f7:62:aa:52:79:10:6c:60:7a:9a"
+
 def main():
     # Connect to the ElasticSearch cluster
-    es = Elasticsearch("http://localhost:9200")
+    es = Elasticsearch(
+        "https://localhost:9200",
+        ssl_assert_fingerprint=CERT_FINGERPRINT,
+        basic_auth=("elastic", ES_PASSWORD)
+        )
 
     # Create a new index in ElasticSearch called books
     #es_functions.createIndex(es, idx_name="books")

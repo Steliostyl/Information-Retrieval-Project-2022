@@ -1,2 +1,4 @@
-elasticsearch-8.5.2/
+__pycache__/
+*.pyc
+elasticsearch*/
 test*
