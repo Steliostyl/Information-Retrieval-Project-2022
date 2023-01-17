@@ -1,6 +1,12 @@
 import json
 from pprint import pprint
-from csv import reader
+from csv import reader, writer
+import re
+import sys
+
+USERS_CSV_PATH = "Files/BX-Users.csv"
+USERS_JSON_PATH = "Files/BX-Users.json"
+USERS_BC_CSV_PATH = "Files/BX-Users-BC.csv"
 
 RATINGS_CSV_PATH = "Files/BX-Book-Ratings.csv"
 RATINGS_JSON_PATH = "Files/BX-Book-Ratings.json"
@@ -142,3 +148,64 @@ def combineAllScores(es_reply: dict, user_id: int, user_ratings: dict) -> dict:
 ## add 0s in the beginning of the string
 #diff = 10-len(isbn)
 #isbn = "0" * diff + isbn
+
+def createUsersByCountryCSV() -> dict:
+    """Reads the in_file (CSV) containing user ratings and creates a python dictionary
+    whose keys are the user IDs and its values are the corresponding user's ratings."""
+
+    # Create empty users dictionary
+    users_by_country = {}
+
+    # Open ratings CSV in read mode
+    with open(USERS_CSV_PATH, 'r') as input_file:
+        csv_reader = reader(input_file, sys.stdout, skipinitialspace=True, lineterminator='\n')
+        # Skip first line (headers)
+        _ = next(csv_reader)
+
+        # Iterate the lines of the csv
+        for uid, location, age in csv_reader:
+            # Extract country from location string
+            country = re.findall(r"[\s\w+]+$", location)
+            if not country:
+                #print(uid, location)
+                country = ""
+            else:
+                country = country[0][1:]
+
+            # If country isn't already a key in users_by_country
+            if country not in users_by_country.keys():
+                # Create a dictionary containing the new user
+                # and set it as value of users_by_country[country]
+                users_by_country[country] = {uid: age}
+            else:
+                # If country is already a key in users_by_country,
+                # add the new user to its dictionary
+                users_by_country[country][uid] = age
+        
+    # Save ratings dict to new CSV file
+    with open(USERS_BC_CSV_PATH, "w", newline='', encoding='utf-8') as output_file:
+        csv_writer = writer(output_file)
+
+        # Write header
+        csv_writer.writerow(["Country", "ID", "Age"])
+        for country in users_by_country:
+            for uid in users_by_country[country]:
+                csv_writer.writerow([country, uid, users_by_country[country][uid]])
+
+    return users_by_country
+
+def checkForBadEntries(users_b_c: dict) -> None:
+    """Prints potential bad entries statistics."""
+
+    bad_countries = 0
+    good_countries = 0
+    for country in users_b_c.items():
+        country_pop = len(country[1])
+        if country_pop <= 10:
+            bad_countries += 1
+            print(country[0], country_pop, country[1])
+        else:
+            good_countries += 1
+    print(bad_countries, good_countries)
+
+createUsersByCountryCSV()

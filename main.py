@@ -9,9 +9,9 @@ CERT_FINGERPRINT = "dd:4d:bc:9e:34:74:70:c5:8c:c9:40:b6:eb:d8:c7:89:07:dd:2e:fa:
 def main():
     # Connect to the ElasticSearch cluster
     es = Elasticsearch(
-        "https://localhost:9200",
-        ssl_assert_fingerprint=CERT_FINGERPRINT,
-        basic_auth=("elastic", ES_PASSWORD)
+        "http://localhost:9200",
+        #ssl_assert_fingerprint=CERT_FINGERPRINT,
+        #basic_auth=("elastic", ES_PASSWORD)
         )
 
     # Create a new index in ElasticSearch called books
@@ -43,6 +43,12 @@ def main():
     # Print the scores of the 5 best and the 5 worst matches
     pprint([a["_score"] for a in final_answer[:5]])
     pprint([a["_score"] for a in final_answer[-5:]])
+
+    ############################## CLUSTERING ##########################
+
+    # Load users CSV into 
+    users_by_country = functions.createUsersByCountryCSV()
+    #functions.usersByCountryToCSV(users_by_country)
 
 if __name__ == "__main__":
     main()
