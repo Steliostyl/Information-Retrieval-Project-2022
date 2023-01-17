@@ -12,6 +12,10 @@ RATINGS_CSV_PATH = "Files/BX-Book-Ratings.csv"
 RATINGS_JSON_PATH = "Files/BX-Book-Ratings.json"
 USER_R_WEIGHT = 1.1
 
+MAX_AGE = 120
+# Minimum population of (probably) valid country
+MIN_VAL_POP = 2
+
 def createUserRatingJSON() -> dict:
     """Reads the in_file (CSV) containing user ratings and creates a python dictionary
     whose keys are the user IDs and its values are the corresponding user's ratings."""
@@ -161,9 +165,23 @@ def createUsersByCountryCSV() -> dict:
         csv_reader = reader(input_file, sys.stdout, skipinitialspace=True, lineterminator='\n')
         # Skip first line (headers)
         _ = next(csv_reader)
+        min_age = 100
+        max_age = 0
 
         # Iterate the lines of the csv
         for uid, location, age in csv_reader:
+            try: 
+                age = int(float(age))
+                if age > MAX_AGE:
+                    age = -1
+            except: 
+                age = -1
+
+            if age != -1:
+                if float(age) < min_age:
+                    min_age = age
+                if age > max_age:
+                    max_age = age
             # Extract country from location string
             country = re.findall(r"[\s\w+]+$", location)
             if not country:
@@ -181,6 +199,10 @@ def createUsersByCountryCSV() -> dict:
                 # If country is already a key in users_by_country,
                 # add the new user to its dictionary
                 users_by_country[country][uid] = age
+
+        mean_age = (min_age + max_age) // 2
+
+        print(f"Min Age: {min_age} Max Age: {max_age} Mean Age: {mean_age}")
         
     # Save ratings dict to new CSV file
     with open(USERS_BC_CSV_PATH, "w", newline='', encoding='utf-8') as output_file:
@@ -188,9 +210,14 @@ def createUsersByCountryCSV() -> dict:
 
         # Write header
         csv_writer.writerow(["Country", "ID", "Age"])
-        for country in users_by_country:
+        for idx, country in enumerate(users_by_country):
+            if len(users_by_country[country]) < MIN_VAL_POP:
+                continue
             for uid in users_by_country[country]:
-                csv_writer.writerow([country, uid, users_by_country[country][uid]])
+                age = users_by_country[country][uid]
+                if age < 0 or age > MAX_AGE:
+                    age = mean_age
+                csv_writer.writerow([idx, uid, age])
 
     return users_by_country
 
@@ -225,3 +252,5 @@ def printUsersDSstats(users_b_c: dict) -> None:
     print(f"Total countries: {bad_countries + good_countries}")
     print(f"Countries with very small population (mostly invalid): {bad_countries}")
     print(f"Countries with a larger population: {good_countries}")
+
+printUsersDSstats(createUsersByCountryCSV())
