@@ -194,18 +194,34 @@ def createUsersByCountryCSV() -> dict:
 
     return users_by_country
 
-def checkForBadEntries(users_b_c: dict) -> None:
+def printUsersDSstats(users_b_c: dict) -> None:
     """Prints potential bad entries statistics."""
 
     bad_countries = 0
     good_countries = 0
+    good_users = 0
+    ok_users = 0
+    total_users = 0
+
     for country in users_b_c.items():
         country_pop = len(country[1])
-        if country_pop <= 10:
+        if country_pop <= 1:
             bad_countries += 1
-            print(country[0], country_pop, country[1])
+            #print(country[0], country_pop, country[1])
         else:
             good_countries += 1
-    print(bad_countries, good_countries)
+            ok_users += country_pop
+            for user in country[1]:
+                if country[1][user] != "" and country[1][user] != " " \
+                    and float(country[1][user]) > 0 and float(country[1][user]) < 120:
+                    good_users += 1
+        total_users += country_pop
 
-createUsersByCountryCSV()
+    # Print statistics
+    print("Dataset Statistics")
+    print(f"Total entries: {total_users}")
+    print(f"Entries that contain a (probably) valid country: {ok_users}")
+    print(f"Full entries (containing a valid country and age): {good_users}")
+    print(f"Total countries: {bad_countries + good_countries}")
+    print(f"Countries with very small population (mostly invalid): {bad_countries}")
+    print(f"Countries with a larger population: {good_countries}")

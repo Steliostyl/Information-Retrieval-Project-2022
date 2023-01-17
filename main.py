@@ -48,7 +48,7 @@ def main():
 
     # Load users CSV into 
     users_by_country = functions.createUsersByCountryCSV()
-    #functions.usersByCountryToCSV(users_by_country)
+    functions.printUsersDSstats(users_by_country)
 
 if __name__ == "__main__":
     main()
