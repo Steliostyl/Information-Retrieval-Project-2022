@@ -5,16 +5,19 @@ import re
 import sys
 import pandas as pd
 
-USERS_CSV_PATH = "Files/BX-Users.csv"
-USERS_JSON_PATH = "Files/BX-Users.json"
-USERS_BC_CSV_PATH = "Files/BX-Users-BC.csv"
+FILES_PATH = "Files/"
 
-RATINGS_CSV_PATH = "Files/BX-Book-Ratings.csv"
-RATINGS_JSON_PATH = "Files/BX-Book-Ratings.json"
+USERS_CSV_PATH = FILES_PATH + "BX-Users.csv"
+USERS_JSON_PATH = FILES_PATH + "BX-Users.json"
+USERS_BC_CSV_PATH = FILES_PATH + "BX-Users-BC.csv"
+
+RATINGS_CSV_PATH = FILES_PATH + "BX-Book-Ratings.csv"
+RATINGS_JSON_PATH = FILES_PATH + "BX-Book-Ratings.json"
 USER_R_WEIGHT = 1.1
 
+# Maximum valid age. Higher ages are considered false entries.
 MAX_AGE = 120
-# Minimum population of (probably) valid country
+# Minimum population of a (probably) valid country.
 MIN_VAL_POP = 2
 
 def createUserRatingJSON() -> dict:
@@ -148,12 +151,6 @@ def combineAllScores(es_reply: dict, user_id: int, user_ratings: dict) -> dict:
 
     return sorted_list
 
-## Might be useful later
-## Check whether isbn is 10 characters and if it's not,
-## add 0s in the beginning of the string
-#diff = 10-len(isbn)
-#isbn = "0" * diff + isbn
-
 def createUsersByCountryCSV() -> dict:
     """Reads the in_file (CSV) containing user ratings and creates a python dictionary
     whose keys are the user IDs and its values are the corresponding user's ratings."""
@@ -212,51 +209,67 @@ def createUsersByCountryCSV() -> dict:
         # Write header
         csv_writer.writerow(["User_ID", "Country", "Age", "Country_ID"])
         for idx, country in enumerate(users_by_country):
+            # Ignore entries with (probably) invalid countries
             if len(users_by_country[country]) < MIN_VAL_POP:
                 continue
+            elif country == "" or country == " ":
+                blank_country = True
+            else:
+                blank_country = False
+                country_idx = idx
+
             for uid in users_by_country[country]:
+                # Entries with blank countries need to have different indexes for clustering!
+                if blank_country:
+                    country_idx = 500 + uid
                 age = users_by_country[country][uid]
+                # Age has to be a number for clustering. We fill 
+                # false/empty ages with the mean age of our dataset.
                 if age < 0 or age > MAX_AGE:
                     age = mean_age
-                csv_writer.writerow([uid, country, age, idx])
+                csv_writer.writerow([uid, country, age, country_idx])
 
     return users_by_country
 
 def printUsersDSstats(users_b_c: dict) -> None:
-    """Prints potential bad entries statistics."""
+    """Prints entries statistics."""
 
-    bad_countries = 0
-    good_countries = 0
-    good_users = 0
-    ok_users = 0
-    total_users = 0
+    probl_countries = 0
+    val_countries = 0
+    comp_entries = 0
+    ok_entries = 0
+    total_entries = 0
 
     for country in users_b_c.items():
         country_pop = len(country[1])
         if country_pop <= 1:
-            bad_countries += 1
+            probl_countries += 1
             #print(country[0], country_pop, country[1])
         else:
-            good_countries += 1
-            ok_users += country_pop
+            val_countries += 1
+            ok_entries += country_pop
             for user in country[1]:
                 if country[1][user] != "" and country[1][user] != " " \
                     and float(country[1][user]) > 0 and float(country[1][user]) < 120:
-                    good_users += 1
-        total_users += country_pop
+                    comp_entries += 1
+        total_entries += country_pop
 
     # Print statistics
     print("Dataset Statistics")
-    print(f"Total entries: {total_users}")
-    print(f"Entries that contain a (probably) valid country: {ok_users}")
-    print(f"Full entries (containing a valid country and age): {good_users}")
-    print(f"Total countries: {bad_countries + good_countries}")
-    print(f"Countries with very small population (mostly invalid): {bad_countries}")
-    print(f"Countries with a larger population: {good_countries}")
+    print(f"Total entries: {total_entries}")
+    print(f"Entries that contain a (probably) valid country: {ok_entries}")
+    print(f"Full entries (containing a valid country and age): {comp_entries}")
+    print(f"Total countries: {probl_countries + val_countries}")
+    print(f"Countries with very small population (mostly invalid): {probl_countries}")
+    print(f"Countries with a larger population: {val_countries}")
 
-def combine_csvs(clust_data_df: pd.DataFrame | None = None) -> pd.DataFrame:
+def combineUsersCSVs(clust_data_df: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Adds cluster assignements to users and saves the combined DF
+    to a CSV. Finally, returns the combined DF."""
+
     if type(clust_data_df) is not pd.DataFrame:
         clust_data_df = pd.read_csv("Files/Clustered-Data.csv")
+
     users_bc_df = pd.read_csv(USERS_BC_CSV_PATH)
     users_bc_df.drop(["Country_ID"], axis=1, inplace=True)
     users_bc_df.insert(3, "Cluster", clust_data_df["Cluster"])
