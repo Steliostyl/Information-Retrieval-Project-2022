@@ -3,6 +3,7 @@ from pprint import pprint
 from csv import reader, writer
 import re
 import sys
+import pandas as pd
 
 USERS_CSV_PATH = "Files/BX-Users.csv"
 USERS_JSON_PATH = "Files/BX-Users.json"
@@ -202,14 +203,14 @@ def createUsersByCountryCSV() -> dict:
 
         mean_age = (min_age + max_age) // 2
 
-        print(f"Min Age: {min_age} Max Age: {max_age} Mean Age: {mean_age}")
+        #print(f"Min Age: {min_age} Max Age: {max_age} Mean Age: {mean_age}")
         
     # Save ratings dict to new CSV file
     with open(USERS_BC_CSV_PATH, "w", newline='', encoding='utf-8') as output_file:
         csv_writer = writer(output_file)
 
         # Write header
-        csv_writer.writerow(["Country", "ID", "Age"])
+        csv_writer.writerow(["User_ID", "Country", "Age", "Country_ID"])
         for idx, country in enumerate(users_by_country):
             if len(users_by_country[country]) < MIN_VAL_POP:
                 continue
@@ -217,7 +218,7 @@ def createUsersByCountryCSV() -> dict:
                 age = users_by_country[country][uid]
                 if age < 0 or age > MAX_AGE:
                     age = mean_age
-                csv_writer.writerow([idx, uid, age])
+                csv_writer.writerow([uid, country, age, idx])
 
     return users_by_country
 
@@ -253,4 +254,13 @@ def printUsersDSstats(users_b_c: dict) -> None:
     print(f"Countries with very small population (mostly invalid): {bad_countries}")
     print(f"Countries with a larger population: {good_countries}")
 
-printUsersDSstats(createUsersByCountryCSV())
+def combine_csvs(clust_data_df: pd.DataFrame | None = None) -> pd.DataFrame:
+    if type(clust_data_df) is not pd.DataFrame:
+        clust_data_df = pd.read_csv("Files/Clustered-Data.csv")
+    users_bc_df = pd.read_csv(USERS_BC_CSV_PATH)
+    users_bc_df.drop(["Country_ID"], axis=1, inplace=True)
+    users_bc_df.insert(3, "Cluster", clust_data_df["Cluster"])
+
+    users_bc_df.to_csv("Files/Combined-Data.csv", index=False)
+    
+    return users_bc_df

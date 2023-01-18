@@ -2,6 +2,7 @@ from pprint import pprint
 import es_functions
 import functions
 from elasticsearch import Elasticsearch
+import clustering
 
 ES_PASSWORD = "-wq4MlKQgAgo+fnKLy=U"
 CERT_FINGERPRINT = "dd:4d:bc:9e:34:74:70:c5:8c:c9:40:b6:eb:d8:c7:89:07:dd:2e:fa:ff:a2:f7:62:aa:52:79:10:6c:60:7a:9a"
@@ -9,9 +10,9 @@ CERT_FINGERPRINT = "dd:4d:bc:9e:34:74:70:c5:8c:c9:40:b6:eb:d8:c7:89:07:dd:2e:fa:
 def main():
     # Connect to the ElasticSearch cluster
     es = Elasticsearch(
-        "http://localhost:9200",
-        #ssl_assert_fingerprint=CERT_FINGERPRINT,
-        #basic_auth=("elastic", ES_PASSWORD)
+        "https://localhost:9200",
+        ssl_assert_fingerprint=CERT_FINGERPRINT,
+        basic_auth=("elastic", ES_PASSWORD)
         )
 
     # Create a new index in ElasticSearch called books
@@ -37,18 +38,20 @@ def main():
 
     # Print the number of documents returned by ElasticSearch,
     # as well as the number of documents in the final reply (10%)
-    print(len(combined_scores))
-    print(len(final_answer))
+    #print(len(combined_scores))
+    #print(len(final_answer))
 
     # Print the scores of the 5 best and the 5 worst matches
-    pprint([a["_score"] for a in final_answer[:5]])
-    pprint([a["_score"] for a in final_answer[-5:]])
+    #pprint([a["_score"] for a in final_answer[:5]])
+    #pprint([a["_score"] for a in final_answer[-5:]])
 
     ############################## CLUSTERING ##########################
-
-    # Load users CSV into 
     users_by_country = functions.createUsersByCountryCSV()
     functions.printUsersDSstats(users_by_country)
+
+    clustered_data_df = clustering.run_k_prototypes()
+    combined_data_df = functions.combine_csvs(clustered_data_df)
+
 
 if __name__ == "__main__":
     main()
