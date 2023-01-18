@@ -47,7 +47,7 @@ def main():
     pprint([a["_score"] for a in final_answer[:5]])
     pprint([a["_score"] for a in final_answer[-5:]])
 
-    input("Press any key to continue to Clustering...")
+    input("Press any key to continue to Clustering...\n")
 
     ############################## CLUSTERING ##############################
 
@@ -56,11 +56,14 @@ def main():
     users_by_country = functions.createUsersByCountryCSV()
     functions.printUsersDSstats(users_by_country)
 
-    clustering.plot_elbow_curve()
-    print("As we can tell from our elbow curve, the optimal number of clusters is 3.")
+    # Plot elbow curve to help determine optimal number of clusters
+    clustering.plot_elbow_curve(2, 8)
+    print("As we can tell from our elbow curve, the optimal number of clusters is 3.\n")
     input("Press any key to continue...")
 
+    # Run k-Prototypes on slightly cleaned dataset
     clustered_data_df = clustering.kPrototypes()
+    # Add cluster assignements to Users-BC and save them to new CSV
     combined_data_df = functions.combineUsersCSVs(clustered_data_df)
 
 

@@ -221,7 +221,7 @@ def createUsersByCountryCSV() -> dict:
             for uid in users_by_country[country]:
                 # Entries with blank countries need to have different indexes for clustering!
                 if blank_country:
-                    country_idx = 500 + uid
+                    country_idx = 500 + int(uid)
                 age = users_by_country[country][uid]
                 # Age has to be a number for clustering. We fill 
                 # false/empty ages with the mean age of our dataset.
@@ -275,5 +275,5 @@ def combineUsersCSVs(clust_data_df: pd.DataFrame | None = None) -> pd.DataFrame:
     users_bc_df.insert(3, "Cluster", clust_data_df["Cluster"])
 
     users_bc_df.to_csv("Files/Combined-Data.csv", index=False)
-    
+
     return users_bc_df

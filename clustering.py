@@ -25,7 +25,7 @@ def getUsersDF(filename: str = "Files/BX-Users-BC.csv"):
 def plot_elbow_curve(start, end) -> None:
     """Plots elbow curve. Used for optimizing K."""
 
-    data = getUsersDF()
+    data = getUsersDF().sample(2000)
     categorical_index = [1]
     no_of_clusters = list(range(start, end+1))
     cost_values = []
@@ -57,6 +57,7 @@ def kPrototypes() -> pd.DataFrame:
     categorical_features_idx = [1]
     mark_array=dataframe.values
     cores = min(PC, cpu_count())
+    print(f"Number of available cores: {cpu_count()}\nStarting k-Prototypes using {cores} cores...")
     test_model = KPrototypes(n_clusters=K, verbose=2, init='Huang', n_init=cores, n_jobs=cores)
     clusters = test_model.fit_predict(mark_array, categorical=categorical_features_idx)
 
