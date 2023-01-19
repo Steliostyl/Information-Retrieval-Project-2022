@@ -64,7 +64,11 @@ def main():
     # Run k-Prototypes on slightly cleaned dataset
     clustered_data_df = clustering.kPrototypes()
     # Add cluster assignements to Users-BC and save them to new CSV
-    combined_data_df = functions.combineUsersCSVs(clustered_data_df)
+    cluster_assigned_users_df = functions.assignClustersToUsers(clustered_data_df)
+
+    # Create a dataframe containing the average
+    # rating of every book per cluster
+    avg_clust_ratings = functions.createAvgClusterRatings(cluster_assigned_users_df)
 
 
 if __name__ == "__main__":

@@ -263,17 +263,37 @@ def printUsersDSstats(users_b_c: dict) -> None:
     print(f"Countries with very small population (mostly invalid): {probl_countries}")
     print(f"Countries with a larger population: {val_countries}")
 
-def combineUsersCSVs(clust_data_df: pd.DataFrame | None = None) -> pd.DataFrame:
+def assignClustersToUsers(cluster_assignement: pd.DataFrame | None = None) -> pd.DataFrame:
     """Adds cluster assignements to users and saves the combined DF
     to a CSV. Finally, returns the combined DF."""
 
-    if type(clust_data_df) is not pd.DataFrame:
-        clust_data_df = pd.read_csv("Files/Clustered-Data.csv")
+    if type(cluster_assignement) is not pd.DataFrame:
+        cluster_assignement = pd.read_csv("Files/Clustered-Data.csv")
 
-    users_bc_df = pd.read_csv(USERS_BC_CSV_PATH)
-    users_bc_df.drop(["Country_ID"], axis=1, inplace=True)
-    users_bc_df.insert(3, "Cluster", clust_data_df["Cluster"])
+    cluster_assigned_users = pd.read_csv(USERS_BC_CSV_PATH)
+    cluster_assigned_users.drop(["Country_ID"], axis=1, inplace=True)
+    cluster_assigned_users.insert(3, "Cluster", cluster_assignement["Cluster"])
 
-    users_bc_df.to_csv("Files/Combined-Data.csv", index=False)
+    cluster_assigned_users.to_csv(FILES_PATH + "Cluster-Assigned-Users.csv", index=False)
 
-    return users_bc_df
+    return cluster_assigned_users
+
+def createAvgClusterRatings(cluster_assignement_df: pd.DataFrame) -> pd.DataFrame:
+    """Function that accepts as input the cluster assignement DataFrame and restores User IDs to it.
+    Then, it combines this DF with the Book-Ratings CSV, averaging out the book ratings per cluster.
+    The combined DF contains the columns isbn, cluster and rating and is finally returned."""
+
+    # Open book ratings CSV in read mode
+    books_ratings_df = pd.read_csv(RATINGS_CSV_PATH)
+    # Merge the two DataFrames on UIDs
+    result = pd.merge(right=books_ratings_df, left=cluster_assignement_df,\
+        how="left", left_on="User_ID", right_on="uid", validate="one_to_many")
+    # Drop useless columns
+    result.drop(["uid", "User_ID", "Country", "Age"], axis=1, inplace=True)
+    # Group ratings by isbn and Cluster and sort resulting DataFrame
+    avg_ratings = result.groupby(["isbn", "Cluster"])
+    avg_ratings = avg_ratings.mean().sort_values(by=["isbn", "Cluster"])
+    # Save DataFrame to CSV
+    avg_ratings.to_csv(FILES_PATH + "Average-Cluster-Ratings.csv")
+
+    return avg_ratings
