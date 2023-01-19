@@ -70,6 +70,16 @@ def main():
     # rating of every book per cluster
     avg_clust_ratings = functions.createAvgClusterRatings(cluster_assigned_users_df)
 
+    # Get the re-calculated document scores by using
+    # user's cluster's average ratings to "rate" unrated books
+    combined_scores_clusters = functions.combineAllScores(es_reply, user_id, user_ratings,\
+        use_cluster_ratings=True, avg_clust_ratings = avg_clust_ratings,\
+            cluster_assigned_users_df = cluster_assigned_users_df)
+    combined_scores_clusters = combined_scores_clusters[:len(combined_scores_clusters)//10]
+
+    print(combined_scores_clusters[:5])
+    
+
 
 if __name__ == "__main__":
     main()

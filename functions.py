@@ -63,7 +63,7 @@ def readUserRatings() -> dict:
         print("User ratings file not found. Creating it...")
         return createUserRatingJSON()
 
-def combinedScoreFunc(es_score: float, max_score: float, user_rating: float) -> float:
+def combinedScoreFunc(es_score: float, max_score: float, user_rating: float, user_id: int = None) -> float:
     """Function that accepts as inputs the elastic search score of a book, the max score,
     as well as the user's rating of the book and returns a combined score."""
 
@@ -100,7 +100,8 @@ def insertInSortedList(s_list: list, ins_hit: dict) -> list:
     # Return the sorted list with the new element added to it
     return s_list[:insertion_idx+1] + [ins_hit] + s_list[insertion_idx+1:]
 
-def combineAllScores(es_reply: dict, user_id: int, user_ratings: dict) -> dict:
+def combineAllScores(es_reply: dict, user_id: int, user_ratings: dict, use_cluster_ratings: bool = False,\
+    avg_clust_ratings: pd.DataFrame = None, cluster_assigned_users_df: pd.DataFrame = None) -> dict:
     """Function that accepts as inputs the reply from ElasticSearch, user's id
     and all of their ratings and returns a sorted list of documents with the
     updated combined scores, which are calculated using the combinedScoreFunc."""
@@ -121,31 +122,46 @@ def combineAllScores(es_reply: dict, user_id: int, user_ratings: dict) -> dict:
     # be inserted into in a sorted manner
     sorted_list = []
 
-    # Iterate through the documents of the ES reply
-    for idx, hit in enumerate(hits):
-        isbn = hit["_source"]["isbn"]
+    if not use_cluster_ratings:
+        # Iterate through the documents of the ES reply
+        for idx, hit in enumerate(hits):
+            isbn = hit["_source"]["isbn"]
 
-        # User ratings is empty
-        if not user_ratings_copy:
-            return normalizeScores(hits, max_score, hits[idx:])
+            # User ratings is empty
+            if not user_ratings_copy:
+                return normalizeScores(hits, max_score, hits[idx:])
 
-        # User hasn't rated this book
-        elif isbn not in user_ratings_copy:
-            # Combined score will be the normalized ES score
-            hit["_score"] *= 4 / max_score
-            # Since the reply from ES is already sorted, only rated
-            # books need to be sorted into the list. For unrated
-            # books, we just append them to the end of the list. 
-            sorted_list.append(hit)
+            # User hasn't rated this book
+            elif isbn not in user_ratings_copy:
+                # Combined score will be the normalized ES score
+                hit["_score"] *= 4 / max_score
+                # Since the reply from ES is already sorted, only rated
+                # books need to be sorted into the list. For unrated
+                # books, we just append them to the end of the list. 
+                sorted_list.append(hit)
 
-        # User has rated this book
-        else:
-            # Combined score will be calculated using combinedScoreFunc
-            hit["_score"] = combinedScoreFunc(hit["_score"] ,max_score, float(user_ratings_copy[isbn]))
-            # Insert document into the sorted list after calculating its new score
+            # User has rated this book
+            else:
+                # Combined score will be calculated using combinedScoreFunc
+                hit["_score"] = combinedScoreFunc(hit["_score"] ,max_score, float(user_ratings_copy[isbn]))
+                # Insert document into the sorted list after calculating its new score
+                sorted_list = insertInSortedList(s_list=sorted_list, ins_hit=hit)
+                # Delete document for user_ratings_copy (in order to know when it's empty)
+                del(user_ratings_copy[isbn])
+    else:
+        # Iterate through the documents of the ES reply
+        for idx, hit in enumerate(hits):
+            isbn = hit["_source"]["isbn"]
+            
+            # User ratings is empty or user hasn't rated this book
+            if not user_ratings_copy or (isbn not in user_ratings_copy):
+                user_rating = getAvgClusterRating(user_id, isbn, avg_clust_ratings, cluster_assigned_users_df)
+            else:
+                user_rating = float(user_ratings_copy[isbn])
+
+
+            hit["_score"] = combinedScoreFunc(hit["_score"] ,max_score, user_rating)
             sorted_list = insertInSortedList(s_list=sorted_list, ins_hit=hit)
-            # Delete document for user_ratings_copy (in order to know when it's empty)
-            del(user_ratings_copy[isbn])
 
     #print(f"Best score: {sorted_list[0]}")
 
@@ -292,8 +308,18 @@ def createAvgClusterRatings(cluster_assignement_df: pd.DataFrame) -> pd.DataFram
     result.drop(["uid", "User_ID", "Country", "Age"], axis=1, inplace=True)
     # Group ratings by isbn and Cluster and sort resulting DataFrame
     avg_ratings = result.groupby(["isbn", "Cluster"])
-    avg_ratings = avg_ratings.mean().sort_values(by=["isbn", "Cluster"])
+    avg_ratings = avg_ratings.mean().sort_values(by=["Cluster", "isbn"])
     # Save DataFrame to CSV
     avg_ratings.to_csv(FILES_PATH + "Average-Cluster-Ratings.csv")
 
     return avg_ratings
+
+def getAvgClusterRating(user_id: int, isbn: str, avg_clust_ratings: pd.DataFrame, cluster_assigned_users_df: pd.DataFrame) -> float:
+    users_cluster = cluster_assigned_users_df["Cluster"].loc[cluster_assigned_users_df["User_ID"] == user_id].iloc[0]
+    try:
+        cluster_avg_rating = avg_clust_ratings.loc[(avg_clust_ratings["isbn"] == isbn) & (avg_clust_ratings["Cluster"] == users_cluster)]
+    # If a book hasn't been rated by a cluster, return the median value of 5 stars out of 10
+    except:
+        cluster_avg_rating = 5
+
+    return cluster_avg_rating
