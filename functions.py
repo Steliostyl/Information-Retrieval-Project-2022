@@ -63,7 +63,7 @@ def readUserRatings() -> dict:
         print("User ratings file not found. Creating it...")
         return createUserRatingJSON()
 
-def combinedScoreFunc(es_score: float, max_score: float, user_rating: float, user_id: int = None) -> float:
+def combinedScoreFunc(es_score: float, max_score: float, user_rating: float) -> float:
     """Function that accepts as inputs the elastic search score of a book, the max score,
     as well as the user's rating of the book and returns a combined score."""
 
@@ -101,7 +101,7 @@ def insertInSortedList(s_list: list, ins_hit: dict) -> list:
     return s_list[:insertion_idx+1] + [ins_hit] + s_list[insertion_idx+1:]
 
 def combineAllScores(es_reply: dict, user_id: int, user_ratings: dict, use_cluster_ratings: bool = False,\
-    avg_clust_ratings: pd.DataFrame = None, cluster_assigned_users_df: pd.DataFrame = None) -> dict:
+    avg_clust_ratings: pd.DataFrame = None, cluster_assigned_users_df: pd.DataFrame = None) -> list:
     """Function that accepts as inputs the reply from ElasticSearch, user's id
     and all of their ratings and returns a sorted list of documents with the
     updated combined scores, which are calculated using the combinedScoreFunc."""
@@ -315,11 +315,14 @@ def createAvgClusterRatings(cluster_assignement_df: pd.DataFrame) -> pd.DataFram
     return avg_ratings
 
 def getAvgClusterRating(user_id: int, isbn: str, avg_clust_ratings: pd.DataFrame, cluster_assigned_users_df: pd.DataFrame) -> float:
-    users_cluster = cluster_assigned_users_df["Cluster"].loc[cluster_assigned_users_df["User_ID"] == user_id].iloc[0]
     try:
-        cluster_avg_rating = avg_clust_ratings.loc[(avg_clust_ratings["isbn"] == isbn) & (avg_clust_ratings["Cluster"] == users_cluster)]
-    # If a book hasn't been rated by a cluster, return the median value of 5 stars out of 10
+        users_cluster = cluster_assigned_users_df["Cluster"].loc[cluster_assigned_users_df["User_ID"] == user_id].iloc[0]
+        try:
+            cluster_avg_rating = avg_clust_ratings.loc[(avg_clust_ratings["isbn"] == isbn) & (avg_clust_ratings["Cluster"] == users_cluster)]
+        # If a book hasn't been rated by a cluster, return the median value of 5 stars out of 10
+        except:
+            cluster_avg_rating = 5
     except:
-        cluster_avg_rating = 5
+        return 5
 
     return cluster_avg_rating

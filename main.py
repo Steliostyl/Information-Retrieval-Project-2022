@@ -3,6 +3,7 @@ import es_functions
 import functions
 from elasticsearch import Elasticsearch
 import clustering
+import pandas as pd
 
 ES_PASSWORD = "-wq4MlKQgAgo+fnKLy=U"
 CERT_FINGERPRINT = "dd:4d:bc:9e:34:74:70:c5:8c:c9:40:b6:eb:d8:c7:89:07:dd:2e:fa:ff:a2:f7:62:aa:52:79:10:6c:60:7a:9a"
@@ -36,16 +37,18 @@ def main():
     # Get the combined scores for all replies
     combined_scores = functions.combineAllScores(es_reply, user_id, user_ratings)
     # Only keep the best 10% documents
-    final_answer = combined_scores[:len(combined_scores)//10]
+    combined_scores = combined_scores[:len(combined_scores)//10]
+    combined_scores_df = pd.DataFrame.from_dict(combined_scores)
+    combined_scores_df.to_csv("Files/Scores-No-Clustering.csv", index=True)
 
     # Print the number of documents returned by ElasticSearch,
     # as well as the number of documents in the final reply (10%)
     print(len(combined_scores))
-    print(len(final_answer))
+    print(len(combined_scores))
 
     # Print the scores of the 5 best and the 5 worst matches
-    pprint([a["_score"] for a in final_answer[:5]])
-    pprint([a["_score"] for a in final_answer[-5:]])
+    pprint([a["_score"] for a in combined_scores[:5]])
+    pprint([a["_score"] for a in combined_scores[-5:]])
 
     input("Press any key to continue to Clustering...\n")
 
@@ -78,7 +81,8 @@ def main():
     combined_scores_clusters = combined_scores_clusters[:len(combined_scores_clusters)//10]
 
     print(combined_scores_clusters[:5])
-    
+    combined_scores_clusters_df = pd.DataFrame.from_dict(combined_scores_clusters)
+    combined_scores_clusters_df.to_csv("Files/Scores-With-Clustering.csv", index=True)
 
 
 if __name__ == "__main__":

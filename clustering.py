@@ -7,7 +7,7 @@ import seaborn
 from os import cpu_count
 
 # Number of jobs to use for parallelism
-PC = 10
+PC = 12
 # Number of clusters
 K = 3
 
