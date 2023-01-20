@@ -13,9 +13,9 @@ def main():
     
     # Connect to the ElasticSearch cluster
     es = Elasticsearch(
-        "https://localhost:9200",
-        ssl_assert_fingerprint=CERT_FINGERPRINT,
-        basic_auth=("elastic", ES_PASSWORD)
+        "http://localhost:9200",
+        #ssl_assert_fingerprint=CERT_FINGERPRINT,
+        #basic_auth=("elastic", ES_PASSWORD)
         )
 
     # Create a new index in ElasticSearch called books
@@ -25,30 +25,20 @@ def main():
     #book_count = es_functions.insertData(es)
     #print(book_count)
 
-    # Read the user ratings JSON previously created.
-    # If the file is not found, create it.
-    user_ratings = functions.readUserRatings()
-
     # Make a query to ElasticSearch and print the results
     es_reply, user_id = es_functions.makeQuery(es)
     #print(len(es_reply["hits"]["hits"]))
     #pprint(es_reply["hits"]["hits"][:5])
 
     # Get the combined scores for all replies
-    combined_scores = functions.combineAllScores(es_reply, user_id, user_ratings)
-    # Only keep the best 10% documents
-    combined_scores = combined_scores[:len(combined_scores)//10]
-    combined_scores_df = pd.DataFrame.from_dict(combined_scores)
-    combined_scores_df.to_csv("Files/Scores-No-Clustering.csv", index=True)
+    combined_scores_df = functions.combineAllScores(es_reply, user_id)
+    combined_scores_df.to_csv("Files/Scores-No-Clustering.csv", index=False)
 
-    # Print the number of documents returned by ElasticSearch,
-    # as well as the number of documents in the final reply (10%)
-    print(len(combined_scores))
-    print(len(combined_scores))
+    input("test_test_1_2")
 
     # Print the scores of the 5 best and the 5 worst matches
-    pprint([a["_score"] for a in combined_scores[:5]])
-    pprint([a["_score"] for a in combined_scores[-5:]])
+    pprint(combined_scores_df.head(5))
+    pprint(combined_scores_df.head(-5))
 
     input("Press any key to continue to Clustering...\n")
 
@@ -75,7 +65,7 @@ def main():
 
     # Get the re-calculated document scores by using
     # user's cluster's average ratings to "rate" unrated books
-    combined_scores_clusters = functions.combineAllScores(es_reply, user_id, user_ratings,\
+    combined_scores_clusters = functions.combineAllScores(es_reply, user_id,\
         use_cluster_ratings=True, avg_clust_ratings = avg_clust_ratings,\
             cluster_assigned_users_df = cluster_assigned_users_df)
     combined_scores_clusters = combined_scores_clusters[:len(combined_scores_clusters)//10]
