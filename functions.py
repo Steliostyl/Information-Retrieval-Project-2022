@@ -7,7 +7,7 @@ import pandas as pd
 FILES_PATH = "Files/"
 
 USERS_CSV_PATH = FILES_PATH + "BX-Users.csv"
-USERS_BC_CSV_PATH = FILES_PATH + "BX-Users-BC.csv"
+USERS_BC_CSV_PATH = FILES_PATH + "Users-BC.csv"
 
 RATINGS_CSV_PATH = FILES_PATH + "BX-Book-Ratings.csv"
 
@@ -18,17 +18,19 @@ ES_WEIGHT = 1
 MAX_AGE = 120
 # Minimum population of a (probably) valid country.
 MIN_VAL_POP = 2
+# Rating to use when rating is not found (out of 10)
+DEFAULT_RAT = 0
 
-def combinedScoreFunc(es_score: float, max_score: float, user_rating: float) -> float:
+def combinedScoreFunc(norm_es_score: float, user_rating: float) -> float:
     """Function that accepts as inputs the elastic search score of a book, the max score,
     as well as the user's rating of the book and returns a combined score."""
 
     # Add the normalized and weighted scores and scale them in the range [-10, 10]
-    combined_score = ((ES_WEIGHT * es_score / max_score) + (USER_R_WEIGHT * (user_rating-5) / 5)) * 10 / (USER_R_WEIGHT + ES_WEIGHT)
+    combined_score = ((ES_WEIGHT * norm_es_score) + (USER_R_WEIGHT * user_rating)) / (USER_R_WEIGHT + ES_WEIGHT)
     #print(f"\nUser Rating: {user_rating}\nES Score: {es_score}\nCombined score: {combined_score}")
     return combined_score
 
-def combineAllScores(es_reply: dict, user_id: int, use_cluster_ratings: bool = False,\
+def calculateCombinedScores(es_reply: dict, user_id: int, use_cluster_ratings: bool = False,\
     avg_clust_ratings: pd.DataFrame = None, cluster_assigned_users_df: pd.DataFrame = None) -> pd.DataFrame:
     """Function that accepts as inputs the reply from ElasticSearch, user's id
     and all of their ratings and returns a sorted list of documents with the
@@ -37,6 +39,7 @@ def combineAllScores(es_reply: dict, user_id: int, use_cluster_ratings: bool = F
     hits = es_reply["hits"]["hits"]
     max_score = es_reply["hits"]["max_score"]
     user_ratings_df = getUserRatings(user_id)
+    print(f"User {user_id} has rated {len(user_ratings_df)} book(s).")
 
     # List to be filled with book entries
     # and their combined scores
@@ -45,6 +48,7 @@ def combineAllScores(es_reply: dict, user_id: int, use_cluster_ratings: bool = F
     # Iterate through the documents of the ES reply
     for hit in hits:
         isbn = hit["_source"]["isbn"]
+        norm_es_score = 10*hit["_score"]/max_score
         
         # User has rated book
         try:
@@ -53,18 +57,18 @@ def combineAllScores(es_reply: dict, user_id: int, use_cluster_ratings: bool = F
         # User has not rated this book
         except:
             if not use_cluster_ratings:
-                book_rating = 5
+                book_rating = DEFAULT_RAT
             else:
                 book_rating = getAvgClusterRating(user_id, isbn, avg_clust_ratings, cluster_assigned_users_df)
     
         # Combined score will be calculated using combinedScoreFunc
-        score = combinedScoreFunc(hit["_score"], max_score, book_rating)
+        score = combinedScoreFunc(norm_es_score, book_rating)
         # Create a new book entry as a list
-        new_book = [score, isbn, hit['_source']["book_title"], hit['_source']["book_author"], hit['_source']["year_of_publication"], hit['_source']["publisher"], hit['_source']["summary"], hit['_source']["category"]]
+        new_book = [score, book_rating, norm_es_score, isbn, hit['_source']["book_title"], hit['_source']["book_author"], hit['_source']["year_of_publication"], hit['_source']["publisher"], hit['_source']["summary"], hit['_source']["category"]]
         books_list.append(new_book)
 
     # Create a new dataframe from books_list and sort it by score
-    best_matches = pd.DataFrame(data=books_list, columns=["score", "isbn", "book_title", "book_author" , "year_of_publication", "publisher", "summary", "category"])\
+    best_matches = pd.DataFrame(data=books_list, columns=["score", "user_rating", "elastic_score", "isbn", "book_title", "book_author" , "year_of_publication", "publisher", "summary", "category"])\
         .sort_values(by="score", ascending=False)
 
     # Only keep the best 10% documents
@@ -206,7 +210,7 @@ def createAvgClusterRatings(cluster_assignement_df: pd.DataFrame) -> pd.DataFram
 
     return avg_ratings
 
-def getAvgClusterRating(user_id: int, isbn: str, avg_clust_ratings: pd.DataFrame, cluster_assigned_users_df: pd.DataFrame) -> float:
+def getAvgClusterRating(user_id: int, isbn: str, avg_clust_ratings: pd.DataFrame, cluster_assigned_users_df: pd.DataFrame) -> tuple:
     """Given a user id and an book's isbn, it returns the average rating of user's cluster for the specified book."""
 
     try:
@@ -214,17 +218,22 @@ def getAvgClusterRating(user_id: int, isbn: str, avg_clust_ratings: pd.DataFrame
         users_cluster = cluster_assigned_users_df["Cluster"].loc[cluster_assigned_users_df["User_ID"] == user_id].iloc[0]
         # Try getting user's cluster's rating of specified book
         try:
-            cluster_avg_rating = avg_clust_ratings.loc[(avg_clust_ratings["isbn"] == isbn) & (avg_clust_ratings["Cluster"] == users_cluster)]
+            rating = avg_clust_ratings.loc[(avg_clust_ratings["isbn"] == isbn) & (avg_clust_ratings["Cluster"] == users_cluster)]["rating"].iloc[0]
+            #print(rating)
+            return rating
         # If a book hasn't been rated by a cluster, return the median value of 5 stars out of 10
         except:
-            cluster_avg_rating = 5
+            return DEFAULT_RAT
     except:
-        return 5
-
-    return cluster_avg_rating
+        return DEFAULT_RAT
 
 def getUserRatings(user_id: int, filename: str = RATINGS_CSV_PATH) -> pd.DataFrame:
     """Read ratings CSV and return specified user's ratings."""
 
     users_ratings_df = pd.read_csv(filename)
     return  pd.read_csv(filename).loc[users_ratings_df["uid"] == user_id]
+
+def printUserWithMostRatings(filename: str = RATINGS_CSV_PATH):
+    users_ratings_df = pd.read_csv(filename)
+    test = users_ratings_df.groupby("uid")["uid"].count().sort_values(ascending=False)
+    print(test)

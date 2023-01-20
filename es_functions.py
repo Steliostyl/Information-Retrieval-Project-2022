@@ -29,7 +29,7 @@ def createIndex(es: Elasticsearch, idx_name: str = "books") -> None:
   }
 
   # Delete any pre-existing index with the same name
-  #es.indices.delete(index=idx_name)
+  es.indices.delete(index=idx_name)
   # Create a new index named idx_name with the defined mappings
   es.indices.create(index=idx_name, mappings=mappings)
 
@@ -72,7 +72,7 @@ def insertData(es: Elasticsearch, filename: str = "Files/BX-Books.csv") -> str:
   resp = es.cat.count(index="books", format="json")
   return resp
 
-def makeQuery(es: Elasticsearch) -> list:
+def makeQuery(es: Elasticsearch) -> tuple:
   """Creates a query and returns Elasticsearch's answer."""
 
   # Input search string and user ID

@@ -1,17 +1,17 @@
-import numpy as np
 import pandas as pd
 from kmodes.kprototypes import KPrototypes
 from sklearn.preprocessing import StandardScaler
 from matplotlib import pyplot as plt
 import seaborn
 from os import cpu_count
+from functions import USERS_BC_CSV_PATH
 
 # Number of jobs to use for parallelism
 PC = 12
 # Number of clusters
 K = 3
 
-def getUsersDF(filename: str = "Files/BX-Users-BC.csv"):
+def getUsersDF(filename: str = USERS_BC_CSV_PATH):
     """Reads Users CSV, loads it to a DataFrame, drops 
     unnecessary columns and standardizes 'Age' column.
     Finally, it returns the processed DataFrame."""
@@ -22,10 +22,13 @@ def getUsersDF(filename: str = "Files/BX-Users-BC.csv"):
     df[['Age']] = scaled_X
     return df
     
-def plot_elbow_curve(start, end) -> None:
+def plot_elbow_curve(start: int, end: int, sample_size: int) -> None:
     """Plots elbow curve. Used for optimizing K."""
 
-    data = getUsersDF().sample(2000)
+    data = getUsersDF()
+    if sample_size > 0 and sample_size < len(data):
+        data = data.sample(sample_size)
+
     categorical_index = [1]
     no_of_clusters = list(range(start, end+1))
     cost_values = []
@@ -48,7 +51,7 @@ def plot_elbow_curve(start, end) -> None:
     plt.plot()
     plt.show()
 
-def kPrototypes() -> pd.DataFrame:
+def kPrototypes(k: int) -> pd.DataFrame:
     """Runs k-Prototypes algorithm for Users, placing them
     in one of K clusters. In our case, we used the elbow method
     and found that using K=3 is optimal for this algorithm."""
@@ -58,7 +61,7 @@ def kPrototypes() -> pd.DataFrame:
     mark_array=dataframe.values
     cores = min(PC, cpu_count())
     print(f"Number of available cores: {cpu_count()}\nStarting k-Prototypes using {cores} cores...")
-    test_model = KPrototypes(n_clusters=K, verbose=2, init='Huang', n_init=cores, n_jobs=cores)
+    test_model = KPrototypes(n_clusters=k, verbose=2, init='Huang', n_init=cores, n_jobs=cores)
     clusters = test_model.fit_predict(mark_array, categorical=categorical_features_idx)
 
     # Cluster Centroids
