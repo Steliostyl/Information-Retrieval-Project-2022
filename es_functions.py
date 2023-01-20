@@ -2,15 +2,6 @@ from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 import pandas as pd
 
-def _input(message, input_type=str):
-    """Helper function that forces user
-    to enter a predefined type of input."""
-
-    while True:
-        try:
-            return input_type (input(message))
-        except: pass
-
 def createIndex(es: Elasticsearch, idx_name: str = "books") -> None:
   """Creates a new book index, deleting
   any pre-existing with the same name."""
@@ -72,12 +63,8 @@ def insertData(es: Elasticsearch, filename: str = "Files/BX-Books.csv") -> str:
   resp = es.cat.count(index="books", format="json")
   return resp
 
-def makeQuery(es: Elasticsearch) -> tuple:
+def makeQuery(es: Elasticsearch, search_string: str) -> tuple:
   """Creates a query and returns Elasticsearch's answer."""
-
-  # Input search string and user ID
-  search_string = input("Enter search string:")
-  user_id = _input("Enter your user ID (must be an integer): ", int)
 
   # Create query body using inputs. Using multi_match we check multiple fields
   # of an entry for the given search string and the final score is calculated
@@ -100,4 +87,4 @@ def makeQuery(es: Elasticsearch) -> tuple:
   )
 
   # Return the results with the higher scores
-  return (es_reply, user_id)
+  return es_reply

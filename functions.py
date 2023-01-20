@@ -27,7 +27,6 @@ def combinedScoreFunc(norm_es_score: float, user_rating: float) -> float:
 
     # Add the normalized and weighted scores and scale them in the range [-10, 10]
     combined_score = ((ES_WEIGHT * norm_es_score) + (USER_R_WEIGHT * user_rating)) / (USER_R_WEIGHT + ES_WEIGHT)
-    #print(f"\nUser Rating: {user_rating}\nES Score: {es_score}\nCombined score: {combined_score}")
     return combined_score
 
 def calculateCombinedScores(es_reply: dict, user_id: int, use_cluster_ratings: bool = False,\
@@ -68,7 +67,7 @@ def calculateCombinedScores(es_reply: dict, user_id: int, use_cluster_ratings: b
         books_list.append(new_book)
 
     # Create a new dataframe from books_list and sort it by score
-    best_matches = pd.DataFrame(data=books_list, columns=["score", "user_rating", "elastic_score", "isbn", "book_title", "book_author" , "year_of_publication", "publisher", "summary", "category"])\
+    best_matches = pd.DataFrame(data=books_list, columns=["score", "user_rating", "es_scaled_score", "isbn", "book_title", "book_author" , "year_of_publication", "publisher", "summary", "category"])\
         .sort_values(by="score", ascending=False)
 
     # Only keep the best 10% documents
@@ -175,15 +174,14 @@ def printUsersDSstats(users_b_c: dict) -> None:
     print(f"Countries with very small population (mostly invalid): {probl_countries}")
     print(f"Countries with a larger population: {val_countries}")
 
-def assignClustersToUsers(cluster_assignement: pd.DataFrame | None = None) -> pd.DataFrame:
+def assignClustersToUsers(cluster_assignement: pd.DataFrame, users_bc: pd.DataFrame) -> pd.DataFrame:
     """Adds cluster assignements to users and saves the combined DF
     to a CSV. Finally, returns the combined DF."""
 
-    if type(cluster_assignement) is not pd.DataFrame:
-        cluster_assignement = pd.read_csv("Files/Clustered-Data.csv")
-
-    cluster_assigned_users = pd.read_csv(USERS_BC_CSV_PATH)
+    cluster_assigned_users = users_bc
+    # Drop Country_ID index from dataframe
     cluster_assigned_users.drop(["Country_ID"], axis=1, inplace=True)
+    # Insert new column named "Cluster" in position 3
     cluster_assigned_users.insert(3, "Cluster", cluster_assignement["Cluster"])
 
     cluster_assigned_users.to_csv(FILES_PATH + "Cluster-Assigned-Users.csv", index=False)
@@ -233,7 +231,7 @@ def getUserRatings(user_id: int, filename: str = RATINGS_CSV_PATH) -> pd.DataFra
     users_ratings_df = pd.read_csv(filename)
     return  pd.read_csv(filename).loc[users_ratings_df["uid"] == user_id]
 
-def printUserWithMostRatings(filename: str = RATINGS_CSV_PATH):
+def printUsersWithMostRatings(filename: str = RATINGS_CSV_PATH):
     users_ratings_df = pd.read_csv(filename)
     test = users_ratings_df.groupby("uid")["uid"].count().sort_values(ascending=False)
     print(test)
