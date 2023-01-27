@@ -1,25 +1,25 @@
-from pprint import pprint
-from csv import reader, writer
+from csv import reader
 import re
 import sys
 import pandas as pd
 
-FILES_PATH = "Files/"
+# Paths
+INPUT_FILES = "Files/Input/"
 
-USERS_CSV_PATH = FILES_PATH + "BX-Users.csv"
-USERS_BC_CSV_PATH = FILES_PATH + "Users-BC.csv"
-
-RATINGS_CSV_PATH = FILES_PATH + "BX-Book-Ratings.csv"
+USERS = INPUT_FILES + "BX-Users.csv"
+RATINGS = INPUT_FILES + "BX-Book-Ratings.csv"
+BOOKS = INPUT_FILES + "BX-Books.csv"
 
 USER_R_WEIGHT = 1.1
 ES_WEIGHT = 1
 
 # Maximum valid age. Higher ages are considered false entries.
 MAX_AGE = 120
+MED_AGE = MAX_AGE / 2
 # Minimum population of a (probably) valid country.
 MIN_VAL_POP = 2
 # Rating to use when rating is not found (out of 10)
-DEFAULT_RAT = 0
+DEFAULT_RAT = 5
 
 def combinedScoreFunc(norm_es_score: float, user_rating: float) -> float:
     """Function that accepts as inputs the elastic search score of a book, the max score,
@@ -36,35 +36,46 @@ def calculateCombinedScores(es_reply: dict, user_id: int, use_cluster_ratings: b
     and all of their ratings and returns a sorted list of documents with the
     updated combined scores, which are calculated using the combinedScoreFunc."""
 
-    hits = es_reply["hits"]["hits"]
-    max_score = es_reply["hits"]["max_score"]
+    books = es_reply["hits"]
+    max_score = es_reply["max_score"]
     user_ratings_df = getUserRatings(user_id)
     print(f"User {user_id} has rated {len(user_ratings_df)} book(s).")
 
     # List to be filled with book entries
     # and their combined scores
     books_list = []
+    users_cluster = -1
+
+    # Get user's cluster
+    if use_cluster_ratings:
+        try:
+            users_cluster = cluster_assigned_users_df["Cluster"].loc[cluster_assigned_users_df["User_ID"] == user_id].iloc[0]
+            print(f"User {user_id} belongs in cluster {users_cluster}")
+        except:
+            print(f"User {user_id} doesn't exist in database. \nScores with clustering will be the same as scores without clustering.")
 
     # Iterate through the documents of the ES reply
-    for hit in hits:
-        isbn = hit["_source"]["isbn"]
-        norm_es_score = 10*hit["_score"]/max_score
+    for book in books:
+        isbn = book["_source"]["isbn"]
+        norm_es_score = 10*book["_score"]/max_score
         
         # User has rated book
         try:
             # Get user's book rating and typecast it to float (from string)
-            book_rating = float(user_ratings_df.loc[user_ratings_df["isbn"] == isbn]["rating"].iloc[0])
+            user_rating = float(user_ratings_df.loc[user_ratings_df["isbn"] == isbn]["rating"].iloc[0])
         # User has not rated this book
         except:
-            if not use_cluster_ratings:
-                book_rating = DEFAULT_RAT
+            # User doesn't exist in the database or function has 
+            # been called with arg use_cluster_ratings = False
+            if users_cluster == -1:
+                user_rating = DEFAULT_RAT
             else:
-                book_rating = getAvgClusterRating(user_id, isbn, avg_clust_ratings, cluster_assigned_users_df)
+                user_rating = getAvgClusterRating(users_cluster, isbn, avg_clust_ratings)
     
         # Combined score will be calculated using combinedScoreFunc
-        score = combinedScoreFunc(norm_es_score, book_rating)
+        score = combinedScoreFunc(norm_es_score, user_rating)
         # Create a new book entry as a list
-        new_book = [score, book_rating, norm_es_score, isbn, hit['_source']["book_title"], hit['_source']["book_author"], hit['_source']["year_of_publication"], hit['_source']["publisher"], hit['_source']["summary"], hit['_source']["category"]]
+        new_book = [score, user_rating, norm_es_score, isbn, book['_source']["book_title"], book['_source']["book_author"], book['_source']["year_of_publication"], book['_source']["publisher"], book['_source']["summary"], book['_source']["category"]]
         books_list.append(new_book)
 
     # Create a new dataframe from books_list and sort it by score
@@ -74,121 +85,48 @@ def calculateCombinedScores(es_reply: dict, user_id: int, use_cluster_ratings: b
     # Only keep the best 10% documents
     return best_matches.head(len(best_matches.index)//10)
 
-def createUsersByCountryCSV() -> dict:
-    """Reads the in_file (CSV) containing user ratings and creates a python dictionary
-    whose keys are the user IDs and its values are the corresponding user's ratings."""
-
+def processUsersCSV() -> pd.DataFrame:
+    """Extract vital information from BX-Users csv and save it to a new CSV."""
     # Create empty users dictionary
-    users_by_country = {}
+    users = []
+    countries = []
 
-    # Open ratings CSV in read mode
-    with open(USERS_CSV_PATH, 'r') as input_file:
+    # Open users CSV in read mode
+    with open(USERS, 'r') as input_file:
         csv_reader = reader(input_file, sys.stdout, skipinitialspace=True, lineterminator='\n')
         # Skip first line (headers)
         _ = next(csv_reader)
 
         # Iterate the lines of the csv
         for uid, location, age in csv_reader:
+            uid = int(uid)
             try: 
                 age = int(float(age))
                 if age > MAX_AGE:
-                    age = -1
+                    age = MED_AGE
             except: 
-                age = -1
+                age = MED_AGE
                 
             # Extract country from location string
             country = re.findall(r"[\s\w+]+$", location)
             if not country:
-                #print(uid, location)
                 country = ""
+                country_id = 500 + uid
             else:
                 country = country[0][1:]
 
             # If country isn't already a key in users_by_country
-            if country not in users_by_country.keys():
-                # Create a dictionary containing the new user
-                # and set it as value of users_by_country[country]
-                users_by_country[country] = {uid: age}
+            if country not in countries:
+                country_id = len(countries)
+                countries.append(country)
             else:
-                # If country is already a key in users_by_country,
-                # add the new user to its dictionary
-                users_by_country[country][uid] = age
+                country_id = countries.index(country)
+
+            users.append([uid, age, country, country_id])
+    
+        users_df = pd.DataFrame(users, columns=["User_ID", "Age", "Country", "Country_ID"])
         
-    # Save ratings dict to new CSV file
-    with open(USERS_BC_CSV_PATH, "w", newline='', encoding='utf-8') as output_file:
-        csv_writer = writer(output_file)
-
-        # Write header
-        csv_writer.writerow(["User_ID", "Country", "Age", "Country_ID"])
-        for idx, country in enumerate(users_by_country):
-            # Ignore entries with (probably) invalid countries
-            if len(users_by_country[country]) < MIN_VAL_POP:
-                continue
-            elif country == "" or country == " ":
-                blank_country = True
-            else:
-                blank_country = False
-                country_idx = idx
-
-            for uid in users_by_country[country]:
-                # Entries with blank countries need to have different indexes for clustering!
-                if blank_country:
-                    country_idx = 500 + int(uid)
-                age = users_by_country[country][uid]
-                # Age has to be a number for clustering. We fill 
-                # false/empty ages with the mean age of our dataset.
-                if age < 0 or age > MAX_AGE:
-                    age = MAX_AGE/2
-                csv_writer.writerow([uid, country, age, country_idx])
-
-    return users_by_country
-
-def printUsersDSstats(users_b_c: dict) -> None:
-    """Prints entries statistics."""
-
-    probl_countries = 0
-    val_countries = 0
-    comp_entries = 0
-    ok_entries = 0
-    total_entries = 0
-
-    for country in users_b_c.items():
-        country_pop = len(country[1])
-        if country_pop <= 1:
-            probl_countries += 1
-            #print(country[0], country_pop, country[1])
-        else:
-            val_countries += 1
-            ok_entries += country_pop
-            for user in country[1]:
-                if country[1][user] != "" and country[1][user] != " " \
-                    and float(country[1][user]) > 0 and float(country[1][user]) < 120:
-                    comp_entries += 1
-        total_entries += country_pop
-
-    # Print statistics
-    print("Dataset Statistics")
-    print(f"Total entries: {total_entries}")
-    print(f"Entries that contain a (probably) valid country: {ok_entries}")
-    print(f"Full entries (containing a valid country and age): {comp_entries}")
-    print(f"Total countries: {probl_countries + val_countries}")
-    print(f"Countries with very small population (mostly invalid): {probl_countries}")
-    print(f"Countries with a larger population: {val_countries}")
-
-def assignClustersToUsers(cluster_assignement: pd.DataFrame | None = None) -> pd.DataFrame:
-    """Adds cluster assignements to users and saves the combined DF
-    to a CSV. Finally, returns the combined DF."""
-
-    if type(cluster_assignement) is not pd.DataFrame:
-        cluster_assignement = pd.read_csv("Files/Clustered-Data.csv")
-
-    cluster_assigned_users = pd.read_csv(USERS_BC_CSV_PATH)
-    cluster_assigned_users.drop(["Country_ID"], axis=1, inplace=True)
-    cluster_assigned_users.insert(3, "Cluster", cluster_assignement["Cluster"])
-
-    cluster_assigned_users.to_csv(FILES_PATH + "Cluster-Assigned-Users.csv", index=False)
-
-    return cluster_assigned_users
+        return users_df
 
 def createAvgClusterRatings(cluster_assignement_df: pd.DataFrame) -> pd.DataFrame:
     """Function that accepts as input the cluster assignement DataFrame and restores User IDs to it.
@@ -196,44 +134,32 @@ def createAvgClusterRatings(cluster_assignement_df: pd.DataFrame) -> pd.DataFram
     The combined DF contains the columns isbn, cluster and rating and is finally returned."""
 
     # Open book ratings CSV in read mode
-    books_ratings_df = pd.read_csv(RATINGS_CSV_PATH)
+    books_ratings_df = pd.read_csv(RATINGS)
     # Merge the two DataFrames on UIDs
     result = pd.merge(right=books_ratings_df, left=cluster_assignement_df,\
         how="left", left_on="User_ID", right_on="uid", validate="one_to_many")
     # Drop useless columns
-    result.drop(["uid", "User_ID", "Country", "Age"], axis=1, inplace=True)
+    result.drop(["uid", "User_ID", "Country", "Country_ID", "Age"], axis=1, inplace=True)
     # Group ratings by isbn and Cluster and sort resulting DataFrame
-    avg_ratings = result.groupby(["isbn", "Cluster"])
-    avg_ratings = avg_ratings.mean().sort_values(by=["Cluster", "isbn"])
-    # Save DataFrame to CSV
-    avg_ratings.to_csv(FILES_PATH + "Average-Cluster-Ratings.csv")
+    avg_cluster_ratings = result.groupby(["isbn", "Cluster"]).mean().sort_values(by=["isbn", "Cluster"])
+    #avg_cluster_ratings = avg_cluster_ratings.mean().sort_values(by=["isbn", "Cluster"])
 
-    return avg_ratings
+    return avg_cluster_ratings
 
-def getAvgClusterRating(user_id: int, isbn: str, avg_clust_ratings: pd.DataFrame, cluster_assigned_users_df: pd.DataFrame) -> tuple:
+def getAvgClusterRating(users_cluster: int, isbn: str, avg_clust_ratings: pd.DataFrame) -> tuple:
     """Given a user id and an book's isbn, it returns the average rating of user's cluster for the specified book."""
 
+    # Try getting user's cluster's rating of specified book
     try:
-        # Try getting user's cluster. If it can't be found, return the median value of 5 stars out of 10
-        users_cluster = cluster_assigned_users_df["Cluster"].loc[cluster_assigned_users_df["User_ID"] == user_id].iloc[0]
-        # Try getting user's cluster's rating of specified book
-        try:
-            rating = avg_clust_ratings.loc[(avg_clust_ratings["isbn"] == isbn) & (avg_clust_ratings["Cluster"] == users_cluster)]["rating"].iloc[0]
-            #print(rating)
-            return rating
-        # If a book hasn't been rated by a cluster, return the median value of 5 stars out of 10
-        except:
-            return DEFAULT_RAT
+        rating = avg_clust_ratings.loc[(avg_clust_ratings["isbn"] == isbn) & (avg_clust_ratings["Cluster"] == users_cluster)]["rating"].iloc[0]
+        #print(rating)
+        return rating
+    # If a book hasn't been rated by a cluster, return the median value of 5 stars out of 10
     except:
         return DEFAULT_RAT
 
-def getUserRatings(user_id: int, filename: str = RATINGS_CSV_PATH) -> pd.DataFrame:
+def getUserRatings(user_id: int, filename: str = RATINGS) -> pd.DataFrame:
     """Read ratings CSV and return specified user's ratings."""
 
     users_ratings_df = pd.read_csv(filename)
     return  pd.read_csv(filename).loc[users_ratings_df["uid"] == user_id]
-
-def printUserWithMostRatings(filename: str = RATINGS_CSV_PATH):
-    users_ratings_df = pd.read_csv(filename)
-    test = users_ratings_df.groupby("uid")["uid"].count().sort_values(ascending=False)
-    print(test)

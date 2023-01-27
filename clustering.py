@@ -4,30 +4,28 @@ from sklearn.preprocessing import StandardScaler
 from matplotlib import pyplot as plt
 import seaborn
 from os import cpu_count
-from functions import USERS_BC_CSV_PATH
 
 # Number of jobs to use for parallelism
 PC = 12
 # Number of clusters
 K = 3
 
-def getUsersDF(filename: str = USERS_BC_CSV_PATH):
+def getKPrototypesInput(proc_users: pd.DataFrame):
     """Reads Users CSV, loads it to a DataFrame, drops 
     unnecessary columns and standardizes 'Age' column.
     Finally, it returns the processed DataFrame."""
 
-    df = pd.read_csv(filename)
-    df.drop(["Country", "User_ID"], axis=1, inplace=True)
-    scaled_X = StandardScaler().fit_transform(df[['Age']])
-    df[['Age']] = scaled_X
-    return df
+    normalized_age_users = proc_users.drop(["Country", "User_ID"], axis=1)
+    scaled_X = StandardScaler().fit_transform(normalized_age_users[['Age']])
+    normalized_age_users[['Age']] = scaled_X
+    return normalized_age_users.values
     
-def plot_elbow_curve(start: int, end: int, sample_size: int) -> None:
+def plot_elbow_curve(start: int, end: int, sample_size: int, proc_users: pd.DataFrame) -> None:
     """Plots elbow curve. Used for optimizing K."""
 
-    data = getUsersDF()
+    data = getKPrototypesInput(proc_users)
     if sample_size > 0 and sample_size < len(data):
-        data = data.sample(sample_size)
+        data = data[:sample_size]
 
     categorical_index = [1]
     no_of_clusters = list(range(start, end+1))
@@ -51,22 +49,18 @@ def plot_elbow_curve(start: int, end: int, sample_size: int) -> None:
     plt.plot()
     plt.show()
 
-def kPrototypes(k: int) -> pd.DataFrame:
+def kPrototypes(k: int, proc_users: pd.DataFrame) -> pd.DataFrame:
     """Runs k-Prototypes algorithm for Users, placing them
     in one of K clusters. In our case, we used the elbow method
     and found that using K=3 is optimal for this algorithm."""
 
-    dataframe = getUsersDF()
     categorical_features_idx = [1]
-    mark_array=dataframe.values
-    cores = min(PC, cpu_count())
-    print(f"Number of available cores: {cpu_count()}\nStarting k-Prototypes using {cores} cores...")
-    test_model = KPrototypes(n_clusters=k, verbose=2, init='Huang', n_init=cores, n_jobs=cores)
+    mark_array = getKPrototypesInput(proc_users)
+    threads = min(PC, cpu_count())
+    print(f"Number of available cores: {cpu_count()}\nStarting k-Prototypes using {threads} threads...")
+    test_model = KPrototypes(n_clusters=k, verbose=2, init='Huang', n_init=threads, n_jobs=threads)
     clusters = test_model.fit_predict(mark_array, categorical=categorical_features_idx)
+    # Add Cluster column to dataframe
+    proc_users['Cluster'] = list(clusters)
 
-    # Cluster Centroids
-    #print(test_model.cluster_centroids_)
-    dataframe['Cluster'] = list(clusters)
-    dataframe.to_csv("Files/Clustered-Data.csv")
-
-    return dataframe
+    return proc_users
