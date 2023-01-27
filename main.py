@@ -1,7 +1,8 @@
+from elasticsearch import Elasticsearch
 from pprint import pprint
+import pandas as pd
 import es_functions
 import functions
-from elasticsearch import Elasticsearch
 import clustering
 import pandas
 import json
@@ -36,9 +37,9 @@ def main():
     
     # Connect to the ElasticSearch cluster
     es = Elasticsearch(
-        "https://localhost:9200",
-        ssl_assert_fingerprint=CERT_FINGERPRINT,
-        basic_auth=("elastic", ES_PASSWORD)
+        "http://localhost:9200",
+        #ssl_assert_fingerprint=CERT_FINGERPRINT,
+        #basic_auth=("elastic", ES_PASSWORD)
         )
 
     # Create a new index in ElasticSearch called books

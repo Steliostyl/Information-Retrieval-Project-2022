@@ -27,7 +27,6 @@ def combinedScoreFunc(norm_es_score: float, user_rating: float) -> float:
 
     # Add the normalized and weighted scores and scale them in the range [-10, 10]
     combined_score = ((ES_WEIGHT * norm_es_score) + (USER_R_WEIGHT * user_rating)) / (USER_R_WEIGHT + ES_WEIGHT)
-    #print(f"\nUser Rating: {user_rating}\nES Score: {es_score}\nCombined score: {combined_score}")
     return combined_score
 
 def calculateCombinedScores(es_reply: dict, user_id: int, use_cluster_ratings: bool = False,\
@@ -79,7 +78,7 @@ def calculateCombinedScores(es_reply: dict, user_id: int, use_cluster_ratings: b
         books_list.append(new_book)
 
     # Create a new dataframe from books_list and sort it by score
-    best_matches = pd.DataFrame(data=books_list, columns=["score", "user_rating", "elastic_score", "isbn", "book_title", "book_author" , "year_of_publication", "publisher", "summary", "category"])\
+    best_matches = pd.DataFrame(data=books_list, columns=["score", "user_rating", "es_scaled_score", "isbn", "book_title", "book_author" , "year_of_publication", "publisher", "summary", "category"])\
         .sort_values(by="score", ascending=False)
 
     # Only keep the best 10% documents
@@ -162,4 +161,4 @@ def getUserRatings(user_id: int, filename: str = RATINGS) -> pd.DataFrame:
     """Read ratings CSV and return specified user's ratings."""
 
     users_ratings_df = pd.read_csv(filename)
-    return  pd.read_csv(filename).loc[users_ratings_df["uid"] == user_id]
+    return  users_ratings_df.loc[users_ratings_df["uid"] == user_id]

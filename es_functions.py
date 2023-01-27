@@ -63,7 +63,7 @@ def insertData(es: Elasticsearch, filename: str = "Files/BX-Books.csv") -> str:
   resp = es.cat.count(index="books", format="json")
   return resp
 
-def makeQuery(es: Elasticsearch, search_string) -> tuple:
+def makeQuery(es: Elasticsearch, search_string: str) -> tuple:
   """Creates a query and returns Elasticsearch's answer."""
 
   # Create query body using inputs. Using multi_match we check multiple fields
