@@ -1,6 +1,7 @@
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 import pandas as pd
+from functions import BOOKS
 
 def createIndex(es: Elasticsearch, idx_name: str = "books") -> None:
   """Creates a new book index, deleting
@@ -19,23 +20,18 @@ def createIndex(es: Elasticsearch, idx_name: str = "books") -> None:
     }
   }
 
-  # Delete any pre-existing index with the same name
-  es.indices.delete(index=idx_name)
+  # Delete pre-existing index with the same name
+  #es.indices.delete(index=idx_name)
   # Create a new index named idx_name with the defined mappings
   es.indices.create(index=idx_name, mappings=mappings)
 
-def insertData(es: Elasticsearch, filename: str = "Files/BX-Books.csv") -> str:
+def insertData(es: Elasticsearch) -> str:
   """Parses the data of a specified csv file and
-  inserts a sample of the data into Elasticsearch.
-  Returns the number of entries after insertion."""
+  inserts the data into Elasticsearch. Returns
+  the number of entries after insertion."""
 
-  # Parse a sample from a given CSV dataset
-  dataframe = (
-    pd.read_csv(filename)
-      .dropna()
-      #.sample(5000, random_state=42)
-      .reset_index()
-  )
+  # Parse the CSV dataset
+  dataframe = pd.read_csv(BOOKS).dropna().reset_index()
 
   # Create a list containing the parsed rows from the CSV file
   bulk_data = []
@@ -83,7 +79,7 @@ def makeQuery(es: Elasticsearch, search_string: str) -> tuple:
   es_reply = es.search(
     index = "books",
     body = query_body,
-    size = 10000
+    size = 10_000
   )
 
   return es_reply["hits"]

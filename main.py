@@ -1,12 +1,10 @@
 from elasticsearch import Elasticsearch
 from pprint import pprint
-import pandas as pd
 import es_functions
 import functions
 import clustering
-import pandas
 import json
-
+import timeit
 
 PROCESSED_FILES = "Files/Processed/"
 
@@ -38,17 +36,17 @@ def main():
     # Connect to the ElasticSearch cluster
     es = Elasticsearch(
         "http://localhost:9200",
-        #ssl_assert_fingerprint=CERT_FINGERPRINT,
-        #basic_auth=("elastic", ES_PASSWORD)
+        ssl_assert_fingerprint=CERT_FINGERPRINT,
+        basic_auth=("elastic", ES_PASSWORD)
         )
 
     # Create a new index in ElasticSearch called books
-    #print("Creating books index...")
-    #es_functions.createIndex(es, idx_name="books")
+    print("Creating books index...")
+    es_functions.createIndex(es, idx_name="books")
 
     # Insert a sample of data from dataset into ElasticSearch
-    #book_count = es_functions.insertData(es)[0]["count"]
-    #print(f"Inserted {book_count} books into index.")
+    book_count = es_functions.insertData(es)[0]["count"]
+    print(f"Inserted {book_count} books into index.")
 
     # Input query parameters and make query to ES
     search_string = input("Enter search string:")
@@ -90,8 +88,11 @@ def main():
 
     # Run k-Prototypes on slightly cleaned dataset
     print("Starting clustering...")
+    start_time = timeit.default_timer()
     cluster_assigned_users = clustering.kPrototypes(k, processed_users)
+    elapsed_time = timeit.default_timer() - start_time
     cluster_assigned_users.to_csv(CLUSTER_ASSIGNED_USERS, index=False)
+    print(f"Clustering with {k} clusters took {int(elapsed_time//60)} minutes and {int(round(elapsed_time % 60, 0))} seconds.")
 
     # Create a dataframe containing the average
     # rating of every book per cluster
@@ -104,7 +105,7 @@ def main():
     print("Re-calculating combined scores using user's cluster's average book ratings...")
     combined_scores_clusters_df = functions.calculateCombinedScores(es_reply, user_id,\
         use_cluster_ratings=True, avg_clust_ratings = avg_clust_ratings,\
-            cluster_assigned_users_df = cluster_assigned_users)
+            cluster_assigned_users = cluster_assigned_users)
     combined_scores_clusters_df.to_csv(SCORES_W_CLUST, index=False)
 
 
