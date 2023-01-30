@@ -9,8 +9,9 @@ from os import cpu_count
 PC = 12
 # Number of clusters
 K = 3
+N_INIT = 5
 
-def getKPrototypesInput(proc_users: pd.DataFrame):
+def getClusteringInput(proc_users: pd.DataFrame):
     """Reads Users CSV, loads it to a DataFrame, drops 
     unnecessary columns and standardizes 'Age' column.
     Finally, it returns the processed DataFrame."""
@@ -20,10 +21,11 @@ def getKPrototypesInput(proc_users: pd.DataFrame):
     normalized_age_users[['Age']] = scaled_X
     return normalized_age_users.values
     
-def plot_elbow_curve(start: int, end: int, sample_size: int, proc_users: pd.DataFrame) -> None:
+def plot_elbow_curve(start: int, end: int, sample_size: int,
+proc_users: pd.DataFrame) -> None:
     """Plots elbow curve. Used for optimizing K."""
 
-    data = getKPrototypesInput(proc_users)
+    data = getClusteringInput(proc_users)
     if sample_size > 0 and sample_size < len(data):
         data = data[:sample_size]
 
@@ -31,18 +33,21 @@ def plot_elbow_curve(start: int, end: int, sample_size: int, proc_users: pd.Data
     no_of_clusters = list(range(start, end+1))
     cost_values = []
     threads = min(PC, cpu_count())
-    print(f"Number of available threads: {cpu_count()}\nStarting testing using {threads} threads...")
+    print(f"Number of available threads: {cpu_count()}")
+    print(f"Starting testing using {threads} threads...")
     
     for k in no_of_clusters:
         print(f"Testing with {k} clusters...")
-        test_model = KPrototypes(n_clusters=k, init='Huang', n_init=threads, n_jobs=threads)
+        test_model = KPrototypes(n_clusters=k, init='Huang', n_init=N_INIT, n_jobs=threads)
         test_model.fit_predict(data, categorical=categorical_index)
         cost_values.append(test_model.cost_)
         
     seaborn.set_theme(style="whitegrid", palette="bright", font_scale=1.1)
     
     plt.figure(figsize=(15, 7))
-    ax = seaborn.lineplot(x=no_of_clusters, y=cost_values, marker="o", dashes=False)
+    ax = seaborn.lineplot(
+        x=no_of_clusters, y=cost_values, marker="o", dashes=False
+    )
     ax.set_title('Elbow curve', fontsize=18)
     ax.set_xlabel('No of clusters', fontsize=14)
     ax.set_ylabel('Cost', fontsize=14)
@@ -56,7 +61,7 @@ def kPrototypes(k: int, proc_users: pd.DataFrame) -> pd.DataFrame:
     and found that using K=3 is optimal for this algorithm."""
 
     categorical_features_idx = [1]
-    mark_array = getKPrototypesInput(proc_users)
+    mark_array = getClusteringInput(proc_users)
     threads = min(PC, cpu_count())
     print(f"Number of available threads: {cpu_count()}\nStarting k-Prototypes using {threads} threads...")
     test_model = KPrototypes(n_clusters=k, verbose=2, init='Huang', n_init=threads, n_jobs=threads)

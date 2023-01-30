@@ -14,7 +14,7 @@ USER_R_WEIGHT = 1.25
 
 # Maximum valid age. Higher ages are considered false entries.
 MAX_AGE = 120
-MED_AGE = MAX_AGE / 2
+DEF_AGE = MAX_AGE // 2
 # Minimum population of a (probably) valid country.
 MIN_VAL_POP = 2
 # Rating to use when rating is not found (out of 10)
@@ -103,42 +103,48 @@ def processUsersCSV() -> pd.DataFrame:
     users = []
     countries = []
 
-    # Open users CSV in read mode
-    with open(USERS, 'r') as input_file:
-        csv_reader = reader(input_file, sys.stdout, skipinitialspace=True, lineterminator='\n')
-        # Skip first line (headers)
-        _ = next(csv_reader)
+    # Iterate BX-Users.csv rows
+    for entry in pd.read_csv(USERS).iterrows():
+        # Cast age to int
+        uid = int(entry[1][0])
+        # Get location
+        location = entry[1][1]
+        # Try to cast age to int. If it's empty or
+        # out of bounds, set it to the default age
+        try: 
+            age = int(entry[1][2])
+            if age > MAX_AGE or age < 0:
+                age = DEF_AGE
+        except:
+            age = DEF_AGE
+            
+        # Extract country from location string
+        country = re.findall(r"[\s\w+]+$", location)
+        # If country is empty, set country_id to 1000+uid, so that users with
+        # incomplete countries do not belong in the same "country". Essential
+        # for clustering! Also, 1000 is arbitrarily chosen butis empirically
+        # higher than the count of normal countries, so there are no conflicts.
+        if not country:
+            country = ""
+            country_id = 1000 + uid
+        else:
+            country = country[0][1:]
 
-        # Iterate the lines of the csv
-        for uid, location, age in csv_reader:
-            uid = int(uid)
-            try: 
-                age = int(float(age))
-                if age > MAX_AGE:
-                    age = MED_AGE
-            except: 
-                age = MED_AGE
-                
-            # Extract country from location string
-            country = re.findall(r"[\s\w+]+$", location)
-            if not country:
-                country = ""
-                country_id = 500 + uid
-            else:
-                country = country[0][1:]
-
-            # If country isn't already a key in users_by_country
-            if country not in countries:
-                country_id = len(countries)
-                countries.append(country)
-            else:
-                country_id = countries.index(country)
-
-            users.append([uid, age, country, country_id])
+        # If country isn't already in the countries list,
+        # its index will be equal to the length of countries
+        if country not in countries:
+            country_id = len(countries)
+            countries.append(country)
+        # Otherwise, its index is equal to the index of the country in countries
+        else:
+            country_id = countries.index(country)
+        users.append([uid, age, country, country_id])
     
-        users_df = pd.DataFrame(users, columns=["User_ID", "Age", "Country", "Country_ID"])
-        
-        return users_df
+    users_df = pd.DataFrame(
+        users, columns=["User_ID", "Age", "Country", "Country_ID"]
+    )
+    
+    return users_df
 
 def createAvgClusterRatings(cluster_assignement_df: pd.DataFrame) -> pd.DataFrame:
     """Function that accepts as input the cluster assignement DataFrame and restores User IDs to it.
