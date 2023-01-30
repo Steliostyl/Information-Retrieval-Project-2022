@@ -1,17 +1,19 @@
 from elasticsearch import Elasticsearch
 from pprint import pprint
-import es_functions
+import elastic
 import functions
 import clustering
+import network
 import json
 import timeit
 
 PROCESSED_FILES = "Files/Processed/"
 
+ES_REPLY = PROCESSED_FILES + "ES-Reply.json"
 PROC_USERS = PROCESSED_FILES + "Processed-Users.csv"
 CLUSTER_ASSIGNED_USERS = PROCESSED_FILES + "Cluster-Assigned-Users.csv"
 AVG_CLUSTER_RATINGS = PROCESSED_FILES + "Average-Cluster-Rating.csv"
-ES_REPLY = PROCESSED_FILES + "ES-Reply.json"
+BOOKS_VECTORIZED_SUMMARIES = PROCESSED_FILES + "Books-Vectorized-Summaries.csv"
 
 OUTPUT_FILES = "Files/Output/"
 
@@ -42,16 +44,16 @@ def main():
 
     # Create a new index in ElasticSearch called books
     print("Creating books index...")
-    es_functions.createIndex(es, idx_name="books")
+    elastic.createIndex(es, idx_name="books")
 
     # Insert a sample of data from dataset into ElasticSearch
-    book_count = es_functions.insertData(es)[0]["count"]
+    book_count = elastic.insertData(es)[0]["count"]
     print(f"Inserted {book_count} books into index.")
 
     # Input query parameters and make query to ES
     search_string = input("Enter search string:")
     user_id = _input("Enter your user ID (must be an integer): ", int)
-    es_reply = es_functions.makeQuery(es, search_string)
+    es_reply = elastic.makeQuery(es, search_string)
 
     # Save ES reply to a JSON file
     with open(ES_REPLY, "w") as output:
@@ -107,6 +109,12 @@ def main():
         use_cluster_ratings=True, avg_clust_ratings = avg_clust_ratings,\
             cluster_assigned_users = cluster_assigned_users)
     combined_scores_clusters_df.to_csv(SCORES_W_CLUST, index=False)
+    
+    ############################## NEURAL NETWORK ##############################
+
+    # Turn summaries into vectors to be used as input for the network
+    vectorized_summaries = network.vectorizeSummaries()
+    vectorized_summaries.to_csv(BOOKS_VECTORIZED_SUMMARIES, index=False)
 
 
 if __name__ == "__main__":
