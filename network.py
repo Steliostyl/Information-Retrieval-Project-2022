@@ -3,50 +3,61 @@ from gensim.parsing.preprocessing import preprocess_string, remove_stopwords, st
 import html
 import pandas as pd
 from functions import BOOKS
-    
-def vectorizeSummary(summary: list, model) -> list:
-    """Vectorizes words in a given summary and
-    returns the list of the word vectors."""
+from os import cpu_count
 
-    # Initialize vectorized words list
-    vectors_list = []
+# Threads to use when training Word2Vec model
+TC = 8
 
-    # Vectorize summary
-    for word in summary:
-        vectors_list.append(model.wv[word][0])
-    
-    return vectors_list
+def preProcessSummaries(summaries) -> list:
+    """Pre-process summary, unescaping HTML characters,
+    removing whitespaces, punctuations and stop words."""
 
-def vectorizeSummaries() -> pd.DataFrame:
-    """Loads books from CSV into a DataFrame, vectorizes all
-    books summaries and saves the new vector list in a new
-    column of the books DataFrame, saving it into a new CSV."""
-
-    # Initialize vectorized summaries list
-    vect_summaries = []
-    books = pd.read_csv(BOOKS)#.head(100)
-
-    # Get all book summaries in a list
-    summaries = books["summary"].to_list()
-
-    # Pre-process summaries
     pre_proc_summaries = []
+    
     for summary in summaries:
-        # Pre-process summary, unescaping HTML characters, removing stop words etc
         summary = html.unescape(summary)
         CUSTOM_FILTERS = [
             lambda x: x.lower(), remove_stopwords,
             strip_multiple_whitespaces, strip_punctuation
         ]
+        
         pre_proc_summaries.append(preprocess_string(summary, CUSTOM_FILTERS))
-    
-    print("Trainning new Word2Vec model...")
-    model = Word2Vec(pre_proc_summaries, min_count=1, workers=6)
-    print(f"Finished trainning model. Model summary: ", model, "\nVectorizing summaries...")
 
-    # Iterate the books summaries
-    for summary in pre_proc_summaries:
-        vect_summaries.append(vectorizeSummary(summary, model))
+    return pre_proc_summaries
+    
+def replaceWordsWithVectors(summaries: list, model: Word2Vec) -> list:
+    """Replaces words in summaries with their
+    corresponsive vectors from a trained model."""
+
+    vect_summaries = []
+
+    for summary in summaries:
+        vect_summary = []
+        for word in summary:
+            vect_summary.append(model.wv[word][0])
+        vect_summaries.append(vect_summary)
+    
+    return vect_summaries
+
+def vectorizeSummaries() -> pd.DataFrame:
+    """Loads books from CSV into a DataFrame, vectorizes all
+    books summaries and adds the new vector list in a new
+    column of the books DataFrame, finally returning it."""
+
+    # Load all book summaries from the CSV
+    # in a list and preprocess them
+    books = pd.read_csv(BOOKS)
+    print("Pre-processing summaries...")
+    pre_proc_summaries = preProcessSummaries(books["summary"].to_list())
+    
+    print("Training Word2Vec model...")
+    workers = min(cpu_count(), TC)
+    model = Word2Vec(pre_proc_summaries, min_count=1, workers=workers)
+    print("Finished training model.")
+    print(f"Model summary: {model}")
+
+    print("Replacing words with vectors from trained model...")
+    vect_summaries = replaceWordsWithVectors(pre_proc_summaries, model)
 
     # Add vectorized summaries to the books DataFrame
     books["Vectorized_Summary"] = vect_summaries

@@ -21,8 +21,7 @@ def getClusteringInput(proc_users: pd.DataFrame):
     normalized_age_users[['Age']] = scaled_X
     return normalized_age_users.values
     
-def plot_elbow_curve(start: int, end: int, sample_size: int,
-proc_users: pd.DataFrame) -> None:
+def plot_elbow_curve(start: int, end: int, sample_size: int, proc_users: pd.DataFrame) -> None:
     """Plots elbow curve. Used for optimizing K."""
 
     data = getClusteringInput(proc_users)
@@ -38,7 +37,9 @@ proc_users: pd.DataFrame) -> None:
     
     for k in no_of_clusters:
         print(f"Testing with {k} clusters...")
-        test_model = KPrototypes(n_clusters=k, init='Huang', n_init=N_INIT, n_jobs=threads)
+        test_model = KPrototypes(
+            n_clusters=k, init='Huang', n_init=N_INIT, n_jobs=threads
+        )
         test_model.fit_predict(data, categorical=categorical_index)
         cost_values.append(test_model.cost_)
         
@@ -57,15 +58,19 @@ proc_users: pd.DataFrame) -> None:
 
 def kPrototypes(k: int, proc_users: pd.DataFrame) -> pd.DataFrame:
     """Runs k-Prototypes algorithm for Users, placing them
-    in one of K clusters. In our case, we used the elbow method
-    and found that using K=3 is optimal for this algorithm."""
+    in one of k clusters."""
 
     categorical_features_idx = [1]
     mark_array = getClusteringInput(proc_users)
     threads = min(PC, cpu_count())
-    print(f"Number of available threads: {cpu_count()}\nStarting k-Prototypes using {threads} threads...")
-    test_model = KPrototypes(n_clusters=k, verbose=2, init='Huang', n_init=threads, n_jobs=threads)
-    clusters = test_model.fit_predict(mark_array, categorical=categorical_features_idx)
+    print(f"Number of available threads: {cpu_count()}")
+    print("Starting k-Prototypes using {threads} threads...")
+    test_model = KPrototypes(
+        n_clusters=k, verbose=2, init='Huang', n_init=N_INIT, n_jobs=threads
+    )
+    clusters = test_model.fit_predict(
+        mark_array, categorical=categorical_features_idx
+    )
     # Add Cluster column to dataframe
     proc_users['Cluster'] = list(clusters)
 

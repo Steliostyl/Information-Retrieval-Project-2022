@@ -65,12 +65,12 @@ def main():
 
     # Get the combined scores for all replies
     print("\nCalculating combined scores...")
-    combined_scores_df = functions.calculateCombinedScores(es_reply, user_id)
-    combined_scores_df.to_csv(SCORES_NO_CLUST, index=False)
+    combined_scores = functions.calculateCombinedScores(es_reply, user_id)
+    combined_scores.to_csv(SCORES_NO_CLUST, index=False)
 
     # Print the scores of the 5 best matches
     print("\nBest 5 matches without clustering:\n")
-    print(combined_scores_df.head(5))
+    print(combined_scores.head(5))
 
     input("\nPress enter to continue to Clustering...\n")
 
@@ -86,15 +86,16 @@ def main():
     # Plot elbow curve to help determine optimal number of clusters
     print("\nPlotting elbow curve...")
     clustering.plot_elbow_curve(2, 12, 10_000, processed_users)
-    k = int(input("Choose number of clusters to use: "))
+    k = _input("Choose number of clusters to use: ", int)
 
-    # Run k-Prototypes on slightly cleaned dataset
+    # Run and time k-Prototypes
     print("Starting clustering...")
     start_time = timeit.default_timer()
     cluster_assigned_users = clustering.kPrototypes(k, processed_users)
     elapsed_time = timeit.default_timer() - start_time
     cluster_assigned_users.to_csv(CLUSTER_ASSIGNED_USERS, index=False)
-    print(f"Clustering with {k} clusters took {int(elapsed_time//60)} minutes and {int(round(elapsed_time % 60, 0))} seconds.")
+    print(f"Clustering with {k} clusters took {int(elapsed_time//60)}\
+        minutes and {int(round(elapsed_time % 60, 0))} seconds.")
 
     # Create a dataframe containing the average
     # rating of every book per cluster
@@ -115,7 +116,7 @@ def main():
     # Turn summaries into vectors to be used as input for the network
     vectorized_summaries = network.vectorizeSummaries()
     vectorized_summaries.to_csv(BOOKS_VECTORIZED_SUMMARIES, index=False)
-
+    print("Finished vectorizing summaries.")
 
 if __name__ == "__main__":
     main()

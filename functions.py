@@ -146,10 +146,13 @@ def processUsersCSV() -> pd.DataFrame:
     
     return users_df
 
-def createAvgClusterRatings(cluster_assignement_df: pd.DataFrame) -> pd.DataFrame:
-    """Function that accepts as input the cluster assignement DataFrame and restores User IDs to it.
-    Then, it combines this DF with the Book-Ratings CSV, averaging out the book ratings per cluster.
-    The combined DF contains the columns isbn, cluster and rating and is finally returned."""
+def createAvgClusterRatings(
+        cluster_assignement_df: pd.DataFrame
+    ) -> pd.DataFrame:
+    """Function that accepts as input the cluster assignement DataFrame and
+    restores User IDs to it. Then, it combines this DF with the Book-Ratings
+    CSV, averaging out the book ratings per cluster. The combined DF contains
+    the columns isbn, cluster and rating and is finally returned."""
 
     # Open book ratings CSV in read mode
     books_ratings_df = pd.read_csv(RATINGS)
@@ -157,10 +160,10 @@ def createAvgClusterRatings(cluster_assignement_df: pd.DataFrame) -> pd.DataFram
     result = pd.merge(right=books_ratings_df, left=cluster_assignement_df,\
         how="left", left_on="User_ID", right_on="uid", validate="one_to_many")
     # Drop useless columns
-    result.drop(["uid", "User_ID", "Country", "Country_ID", "Age"], axis=1, inplace=True)
+    result.drop(
+        ["uid", "User_ID", "Country", "Country_ID", "Age"], axis=1, inplace=True)
     # Group ratings by isbn and Cluster and sort resulting DataFrame
-    avg_cluster_ratings = result.groupby(["isbn", "Cluster"]).mean().sort_values(by=["isbn", "Cluster"])
-    #avg_cluster_ratings = avg_cluster_ratings.mean().sort_values(by=["isbn", "Cluster"])
+    avg_cluster_ratings = result.groupby(["isbn", "Cluster"]).mean()
 
     return avg_cluster_ratings
 
@@ -180,4 +183,4 @@ def getUserRatings(user_id: int, filename: str = RATINGS) -> pd.DataFrame:
     """Read ratings CSV and return specified user's ratings."""
 
     users_ratings_df = pd.read_csv(filename)
-    return  pd.read_csv(filename).loc[users_ratings_df["uid"] == user_id]
+    return  users_ratings_df.loc[users_ratings_df["uid"] == user_id]
