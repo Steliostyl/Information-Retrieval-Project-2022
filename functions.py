@@ -184,22 +184,29 @@ def createAvgClusterRatings(
 
     return (cluster_assignement, avg_cluster_ratings)
 
-def getAvgClusterRating(users_cluster: int, isbn: str, avg_clust_ratings: pd.DataFrame, use_nn, model: Sequential = None,
-                        vectorized_books: pd.DataFrame = None, books: pd.DataFrame = None, vocab_size: int = None,
+def getAvgClusterRating(users_cluster: int, isbn: str, avg_clust_ratings:
+                        pd.DataFrame, use_nn: int, model: Sequential = None,
+                        vectorized_books: pd.DataFrame = None,
+                        books: pd.DataFrame = None, vocab_size: int = None,
                         max_length: int = None) -> tuple:
-    """Given a user id and an book's isbn, it returns the average rating of user's cluster for the specified book."""
+    """Given a user id and an book's isbn, it returns the
+    average rating of user's cluster for the specified book."""
 
     # Try getting user's cluster's rating of specified book
     try:
-        rating = avg_clust_ratings.loc[(avg_clust_ratings["isbn"] == isbn) & (avg_clust_ratings["Cluster"] == users_cluster)]["rating"].iloc[0]
-        #print(rating)
+        rating = avg_clust_ratings.loc[(avg_clust_ratings["isbn"] == isbn) &\
+                                       (avg_clust_ratings["Cluster"] ==
+                                        users_cluster)]["rating"].iloc[0]
         return rating
-    # If a book hasn't been rated by a cluster, return the median value of 5 stars out of 10
+    # If a book hasn't been rated by a cluster and use_nn = 0,
+    # return the median value of 5 stars out of 10
     except:
         # Using vectorized books
         if use_nn == 1:
-            vect_sum = vectorized_books["Vectorized_Summary"].loc[vectorized_books["isbn"] == isbn].to_list()[0].reshape(1, -1)
-            return model.predict(vect_sum)[0][0]*10
+            vect_sum = vectorized_books["Vectorized_Summary"].\
+                loc[vectorized_books["isbn"] == isbn].to_list()[0]\
+                    .reshape(1, -1)
+            return model.predict(vect_sum)[0][0]
         # Not using vectorized books
         elif use_nn == 2:
             summary = books[books["isbn"]==isbn]["summary"].to_list()[0]
@@ -209,7 +216,7 @@ def getAvgClusterRating(users_cluster: int, isbn: str, avg_clust_ratings: pd.Dat
             encoded_sum = one_hot(preproc_summary, vocab_size)
             # Add padding
             X = pad_sequences([encoded_sum],maxlen=max_length,padding='post')
-            return model.predict(X)[0][0]*10
+            return model.predict(X)[0][0]
         return DEFAULT_RATING
 
 def getUserRatings(user_id: int, filename: str = RATINGS) -> pd.DataFrame:

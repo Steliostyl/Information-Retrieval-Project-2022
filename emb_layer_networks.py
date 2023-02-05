@@ -49,7 +49,7 @@ def getNetworkInput(summaries: list, ratings: list, vocab_size, max_length, clas
         return (X, Y, classifier_model_1(vocab_size, max_length))
     # Define the model
     model = base_model_1(vocab_size, max_length)
-    Y = np.array([r/10 for r in ratings])
+    Y = np.array(ratings)
     return (X, Y, model)
 
 def preProcessSummaryv2(summary) -> list:
@@ -58,27 +58,26 @@ def preProcessSummaryv2(summary) -> list:
 def preProcessSummaryv3(summary) -> str:
     return re.sub('[^A-Za-z0-9]+', ' ', html.unescape(summary))
 
-def trainNetwork(X: np.array, Y: np.array, model: Sequential):
-    print(X.shape)
-    print(Y.shape)
-
-    #model = base_model_2(X.shape[1])
-    model.summary()
-    history = model.fit(X, Y, validation_split=0.3, epochs=10, batch_size=10, verbose=1)
-    return (model, history)
+#def trainNetwork(X: np.array, Y: np.array, model: Sequential):
+#    print(X.shape)
+#    print(Y.shape)
+#
+#    #model = base_model_2(X.shape[1])
+#    model.summary()
+#    history = model.fit(X, Y, validation_split=0.3, epochs=10, batch_size=10, verbose=1)
+#    return (model, history)
 
 def base_model_1(vocab_size, max_length):
     max_length = max_length
     # Create model
     model = Sequential()
-    model.add(Embedding(input_dim=vocab_size, output_dim=128,input_length=max_length))
+    model.add(Embedding(input_dim=vocab_size, output_dim=128,
+                        input_length=max_length))
     model.add(Flatten())
-    #model.add(Dense(512, activation='relu'))
-    #model.add(Dense(256, activation='relu'))
     model.add(Dense(256, activation='relu'))
     model.add(Dense(64, activation='relu'))
     model.add(Dense(1, activation='relu'))
-    model.compile(optimizer='adam',loss=custom_loss_function,metrics=['mae'])
+    model.compile(optimizer='adam',loss="mse",metrics=['mae'])
     return model
 
 def base_model_2(vocab_size, max_length):
@@ -123,19 +122,30 @@ def plotHistory(history):
     plt.legend(['train', 'test'], loc='upper left')
     plt.show()
 
-def trainClusterNetwork(cluster: int, avg_clust_ratings: pd.DataFrame, books: pd.DataFrame, vocab_size: int, max_length: int):
-    """Train k regression NNs on a pre-vectorized set of summaries."""
+def trainClusterNetwork(cluster: int, avg_clust_ratings: pd.DataFrame,
+                        books: pd.DataFrame, vocab_size: int, max_length: int):
+    """Train regression NN on user’s cluster’s average ratings"""
 
     print(f"Preparing network input for cluster {cluster}...")
     # Add book summaries to the avg_clust_ratings df
     print(avg_clust_ratings.loc[avg_clust_ratings["Cluster"]==cluster].head())
-    cluster_ratings = pd.merge(right=avg_clust_ratings.loc[avg_clust_ratings["Cluster"]==cluster], left=books, on="isbn", validate="one_to_one")
+    cluster_ratings = pd.merge(
+        right=avg_clust_ratings.loc[avg_clust_ratings["Cluster"]==cluster],
+        left=books, on="isbn", validate="one_to_one")
     summaries = cluster_ratings["summary"].to_list()
     ratings = cluster_ratings["rating"].to_list()
 
-    X, Y, model = getNetworkInput(summaries, ratings, vocab_size=vocab_size, max_length=max_length)
+    X, Y, model = getNetworkInput(summaries, ratings, vocab_size, max_length)
     print(f"Training network for cluster {cluster}...")
-    model, history = trainNetwork(X, Y, model)
+
+    # Print input and label shapes
+    print(X.shape)
+    print(Y.shape)
+    # Print model summary
+    model.summary()
+    # Start training
+    history = model.fit(X, Y, validation_split=0.3, epochs=10,
+                        batch_size=10, verbose=1)
     plotHistory(history)
 
     return model
@@ -143,13 +153,23 @@ def trainClusterNetwork(cluster: int, avg_clust_ratings: pd.DataFrame, books: pd
 def trainSingleNetwork(books, book_ratings, vocab_size: int, max_length: int, classifier = False):
     summaries, ratings = getAllSummariesAndRatings(books, book_ratings)
     X, Y, model = getNetworkInput(summaries, ratings,  vocab_size=vocab_size, max_length=max_length, classifier=classifier)
-    model, history = trainNetwork(X, Y, model)
+    # Print input and label shapes
+    print(X.shape)
+    print(Y.shape)
+    # Print model summary
+    model.summary()
+    # Start training
+    history = model.fit(X, Y, validation_split=0.3, epochs=10, batch_size=10, verbose=1)
+    plotHistory(history)
+    
     plotHistory(history)
     return model
 
 def calculateVocab(books: pd.DataFrame):
-    """Calculates the vocabulary size and the max length of the rated books of a cluster"""
-    summaries = [preProcessSummaryv3(book[1]["summary"]) for book in books.iterrows()]
+    """Calculates the vocabulary size and the
+    max length of the rated books of a cluster"""
+    summaries = [preProcessSummaryv3(book[1]["summary"])
+                 for book in books.iterrows()]
     vocab_size = 0
     max_length = 0
     vocab = {}

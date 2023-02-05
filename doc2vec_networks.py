@@ -24,7 +24,7 @@ def trainNetwork(vect_sums_list, ratings):
     
     # Prepare input for network
     X = pd.DataFrame(vect_sums_list, columns=["vect"+str(i) for i in range(len(vect_sums_list[0]))])
-    Y = np.array([r/10 for r in ratings])
+    Y = np.array(ratings)
 
     # Check input and label shapes
     print("Input and label shapes:")
@@ -104,59 +104,6 @@ def trainClusterNetwork(users_cluster: int, vect_books: pd.DataFrame, avg_clust_
     model = trainNetwork(vect_sums, ratings)
 
     return model
- 
-def makePredictions(model: Sequential):
-    good_results = [
-        "1895636299",
-        "189659770X",
-        "1899598014",
-        "1901983307",
-        "1904929001",
-        "1920769005",
-        "1930709323",
-        "193072229X",
-        "2253013870",
-        "2253053406",
-        "2266087614",
-        "3492036376",
-        "8420401153",
-        "8420439193",
-        "8466302395",
-        "8495501465",
-        "8495971054",
-        "9839236083"
-        
-    ]
-    bad_results = [
-        "0380977427",
-        "038519093X",
-        "0385301898",
-        "0385479174",
-        "0385489102",
-        "0385492790",
-        "0385495757",
-        "0385730012",
-        "0393325261",
-        "0394751027",
-        "0394800893",
-        "0394871804",
-        "0394885201",
-        "0394926870",
-        "0395368944",
-        "0395390338",
-        "0395936551"
-    ]
-    input("Press ENTER to make predictions with books that are rated with 10/10...")
-    for isbn in good_results:
-        summary = list(books["Vectorized_Summary"].loc[books["isbn"] == isbn])
-        network_input = pd.DataFrame(summary, columns=["vect"+str(i) for i in range(len(summary[0]))])
-        print(model.predict(network_input)[0][0])
-
-    input("Press ENTER to make predictions with books that are rated with 0/10...")
-    for isbn in bad_results:
-        summary = list(books["Vectorized_Summary"].loc[books["isbn"] == isbn])
-        network_input = pd.DataFrame(summary, columns=["vect"+str(i) for i in range(len(summary[0]))])
-        print(model.predict(network_input, verbose=0)[0][0])
 
 def plotHistory(history):
     # list all data in history

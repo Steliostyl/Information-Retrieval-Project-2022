@@ -8,7 +8,7 @@ from os import cpu_count
 # Number of jobs to use for parallelism
 PC = 12
 # Cetroid initializations
-N_INIT = 10
+N_INIT = 6
 
 def getClusteringInput(proc_users: pd.DataFrame):
     """Reads Users CSV, loads it to a DataFrame, drops 

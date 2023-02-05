@@ -39,21 +39,7 @@ def _input(message, input_type=str):
         try:
             return input_type (input(message))
         except: pass
-
-def useEmbeddingLayer(books: pd.DataFrame, avg_clust_ratings: pd.DataFrame, vs:int, ml: int):
-    print(f"Calculating vocab size...")
-    print(f"Vocab size: {vs}, Max length: {ml}")
-    #model = trainSingleNetwork(books, book_ratings, vocab_size=vs, max_length=ml, classifier=False)
-    model = emb_layer_networks.trainClusterNetwork(1, avg_clust_ratings, books, vocab_size=vs, max_length=ml)
-    return model
-
-def useDoc2VecModel(books: pd.DataFrame, avg_clust_ratings: pd.DataFrame, users_cluster: int):
-    vectorized_books = askForLoadVectorizedBooks(books)
-    # Train a neural network model to predict user's cluster average book ratings
-    print(f"Trainning a neural network model to predict missing ratings of cluster {users_cluster}...")
-    model = doc2vec_networks.trainClusterNetwork(users_cluster, vectorized_books, avg_clust_ratings)
-    return vectorized_books, model
-
+        
 def askForLoadVectorizedBooks(books:pd.DataFrame) -> pd.DataFrame:
     while True:
         pre_load = input("Load vectorized books from file? (y/n): ")
@@ -79,9 +65,9 @@ def main():
     
     # Connect to the ElasticSearch cluster
     es = Elasticsearch(
-        "https://localhost:9200",
-        ssl_assert_fingerprint=CERT_FINGERPRINT,
-        basic_auth=("elastic", ES_PASSWORD)
+        "http://localhost:9200",
+        #ssl_assert_fingerprint=CERT_FINGERPRINT,
+        #basic_auth=("elastic", ES_PASSWORD)
         )
 
     # Create a new index in ElasticSearch called books
@@ -102,7 +88,7 @@ def main():
 
     # Print results summary
     print(f"\nElasticsearch returned {len(es_reply['hits'])} books. The 5 best matches are:")
-    print(elastic_books.head())
+    print(elastic_books.head(10))
 
     # Get the combined scores for all replies
     print("\nCalculating combined scores...")
@@ -111,7 +97,7 @@ def main():
 
     # Print the scores of the 5 best matches
     print("\nBest 5 matches without clustering:\n")
-    print(combined_scores.head())
+    print(combined_scores.head(10))
 
     input("\nPress enter to continue to Clustering...\n")
 
@@ -122,7 +108,7 @@ def main():
     print("Creating processed users CSV...")
     processed_users = functions.processUsersCSV()
     processed_users.to_csv(PROC_USERS, index=False)
-    print(processed_users.head(5))
+    #print(processed_users.head(10))
 
     # Plot elbow curve to help determine optimal number of clusters
     #print("\nPlotting elbow curve...")
@@ -139,6 +125,9 @@ def main():
         es_reply, user_id, use_cluster_ratings=True, avg_clust_ratings = avg_clust_ratings,
         cluster_assigned_users = cluster_assignement)
     combined_scores_clusters.to_csv(SCORES_W_CLUST, index=False)
+    # Print the scores of the 5 best matches
+    print("\nBest 10 matches with clustering:\n")
+    print(combined_scores.head(30))
     
     input("\nPress enter to continue to neural networks...\n")
 
@@ -146,17 +135,26 @@ def main():
     
     books = pd.read_csv(BOOKS)
 
-    # Use a single model with an embedding layer that vectorizes summaries and later predicts missing ratings
-    vs, ml = emb_layer_networks.calculateVocab(books)
-    model = useEmbeddingLayer(books, avg_clust_ratings, vs, ml)
-    combined_scores_clusters_nn, _ = functions.calculateCombinedScores(es_reply, user_id,
-        use_cluster_ratings=True, avg_clust_ratings = avg_clust_ratings,
+    # Use a single model with an embedding layer that vectorizes
+    # summaries and later predicts missing ratings
+    vocab_size, max_length = emb_layer_networks.calculateVocab(books)
+    print(f"Vocab size: {vocab_size}, Max length: {max_length}")
+    model = emb_layer_networks.trainClusterNetwork(users_cluster, 
+                                                   avg_clust_ratings, books,
+                                                   vocab_size, max_length)
+    combined_scores_clusters_nn, _ = functions.calculateCombinedScores(
+        es_reply, user_id, use_cluster_ratings=True,
+        avg_clust_ratings = avg_clust_ratings,
         cluster_assigned_users = cluster_assignement, use_nn=2,
-        model=model, books=books, vocab_size=vs, max_length=ml)
+        model=model, books=books, vocab_size=vocab_size, max_length=max_length)
     combined_scores_clusters_nn.to_csv(SCORES_W_CLUST_AND_NN_EMB, index=False)  
 
     ## Use a Doc2Vec model to turn summaries into vectors and then train and use another model to predict the missing ratings
-    #vectorized_books, model = useDoc2VecModel(books, avg_clust_ratings, users_cluster)
+    
+    #vectorized_books = askForLoadVectorizedBooks(books)
+    ## Train a neural network model to predict user's cluster average book ratings
+    #print(f"Trainning a neural network model to predict missing ratings of cluster {users_cluster}...")
+    #model = doc2vec_networks.trainClusterNetwork(users_cluster, vectorized_books, avg_clust_ratings)
     #print("Re-calculating combined scores using user's cluster's average book ratings and neural network...")
     #combined_scores_clusters_nn, _ = functions.calculateCombinedScores(es_reply, user_id,
     #    use_cluster_ratings=True, avg_clust_ratings = avg_clust_ratings,
