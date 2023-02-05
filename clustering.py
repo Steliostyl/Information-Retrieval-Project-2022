@@ -7,9 +7,8 @@ from os import cpu_count
 
 # Number of jobs to use for parallelism
 PC = 12
-# Number of clusters
-K = 3
-N_INIT = 5
+# Cetroid initializations
+N_INIT = 10
 
 def getClusteringInput(proc_users: pd.DataFrame):
     """Reads Users CSV, loads it to a DataFrame, drops 
@@ -32,7 +31,6 @@ def plot_elbow_curve(start: int, end: int, sample_size: int, proc_users: pd.Data
     no_of_clusters = list(range(start, end+1))
     cost_values = []
     threads = min(PC, cpu_count())
-    print(f"Number of available threads: {cpu_count()}")
     print(f"Starting testing using {threads} threads...")
     
     for k in no_of_clusters:
@@ -64,11 +62,11 @@ def kPrototypes(k: int, proc_users: pd.DataFrame) -> pd.DataFrame:
     mark_array = getClusteringInput(proc_users)
     threads = min(PC, cpu_count())
     print(f"Number of available threads: {cpu_count()}")
-    print("Starting k-Prototypes using {threads} threads...")
-    test_model = KPrototypes(
+    print(f"Starting k-Prototypes using {threads} threads...")
+    model = KPrototypes(
         n_clusters=k, verbose=2, init='Huang', n_init=N_INIT, n_jobs=threads
     )
-    clusters = test_model.fit_predict(
+    clusters = model.fit_predict(
         mark_array, categorical=categorical_features_idx
     )
     # Add Cluster column to dataframe

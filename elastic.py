@@ -20,8 +20,11 @@ def createIndex(es: Elasticsearch, idx_name: str = "books") -> None:
     }
   }
 
-  # Delete pre-existing index with the same name
-  #es.indices.delete(index=idx_name)
+  try:
+    # Delete pre-existing index with the same name
+    es.indices.delete(index=idx_name)
+  except:
+    pass
   # Create a new index named idx_name with the defined mappings
   es.indices.create(index=idx_name, mappings=mappings)
 
