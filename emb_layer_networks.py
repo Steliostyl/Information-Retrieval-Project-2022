@@ -9,40 +9,27 @@ import pandas as pd
 import re
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from keras.optimizers import adam_v2
+from nltk.corpus import stopwords
+from gensim.parsing.preprocessing import remove_stopwords
 
-INPUT_FILES = "C:/Users/steli/Documents/Github/Data-Retrieval-Project-2022/Files/Input/"
+INPUT_FILES = "Files/Input/"
 
 USERS = INPUT_FILES + "BX-Users.csv"
 RATINGS = INPUT_FILES + "BX-Book-Ratings.csv"
 BOOKS = INPUT_FILES + "BX-Books.csv"
 
-PROCESSED_FILES = "C:/Users/steli/Documents/Github/Data-Retrieval-Project-2022/Files/Processed/"
+PROCESSED_FILES = "Files/Processed/"
 BOOKS_VECTORIZED_SUMMARIES_PKL = PROCESSED_FILES + "Books-Vectorized-Summaries.pkl"
 AVG_CLUST_RATING = PROCESSED_FILES + "Average-Cluster-Rating.csv"
-
-VOCAB_SIZE = 86_982
-MAX_LENGTH = 52
 
 def getAllSummariesAndRatings(books: pd.DataFrame, book_ratings: pd.DataFrame) -> tuple:
     books_w_ratings = pd.merge(right=book_ratings, left=books, how="inner", on="isbn", validate="one_to_many").dropna().groupby(by="isbn")
     summaries = books_w_ratings.first()["summary"].to_list()
-    ratings = books_w_ratings.mean(numeric_only=False)["rating"].to_list()
-    return (summaries, ratings)
-
-def getClusterSummariesAndRatings(books:pd.DataFrame, avg_clust_ratings: pd.DataFrame, i):
-    cluster_ratings = pd.merge(right=avg_clust_ratings.loc[avg_clust_ratings["Cluster"]==i], left=books, on="isbn", validate="one_to_one")
-    summaries = cluster_ratings["summary"].to_list()
-    ratings = cluster_ratings["rating"].to_list()
+    ratings = books_w_ratings.mean(numeric_only=True)["rating"].to_list()
     return (summaries, ratings)
 
 def getNetworkInput(summaries: list, ratings: list, vocab_size, max_length, classifier = False):
-    # Preprocess summaries
-    preproc_summaries = [preProcessSummaryv3(summary) for summary in summaries]
-    # One hot encode words of documents
-    encoded_sums = [one_hot(d,vocab_size) for d in preproc_summaries]
-    # Add padding
-    X = pad_sequences(encoded_sums,maxlen=max_length,padding='post')
+    X = prepareSummaries(summaries, vocab_size, max_length)
     # Normalize ratings
     if classifier:
         Y = np.array([customOHE2(r) for r in ratings])
@@ -52,29 +39,30 @@ def getNetworkInput(summaries: list, ratings: list, vocab_size, max_length, clas
     Y = np.array(ratings)
     return (X, Y, model)
 
-def preProcessSummaryv2(summary) -> list:
-    return list(tokenize(html.unescape(summary), lowercase=True, deacc=True))
+def prepareSummaries(summaries: list, vocab_size: int, max_length: int) -> np.array:
+    encoded_summaries = []
+    for summary in summaries:
+        # Preprocess summary
+        preproc_sum = preProcessSummaryv3(summary)
+        # One hot encode words of summary
+        enc_sum = one_hot(preproc_sum, vocab_size)
+        encoded_summaries.append(enc_sum)
+
+    # Add padding to all summaries
+    X = pad_sequences(encoded_summaries, max_length)
+    return X
 
 def preProcessSummaryv3(summary) -> str:
-    return re.sub('[^A-Za-z0-9]+', ' ', html.unescape(summary))
-
-#def trainNetwork(X: np.array, Y: np.array, model: Sequential):
-#    print(X.shape)
-#    print(Y.shape)
-#
-#    #model = base_model_2(X.shape[1])
-#    model.summary()
-#    history = model.fit(X, Y, validation_split=0.3, epochs=10, batch_size=10, verbose=1)
-#    return (model, history)
+    return remove_stopwords(re.sub('[^A-Za-z0-9]+', ' ', html.unescape(summary)))
 
 def base_model_1(vocab_size, max_length):
     max_length = max_length
     # Create model
     model = Sequential()
-    model.add(Embedding(input_dim=vocab_size, output_dim=128,
+    model.add(Embedding(input_dim=vocab_size, output_dim=256,
                         input_length=max_length))
     model.add(Flatten())
-    model.add(Dense(256, activation='relu'))
+    model.add(Dense(128, activation='relu'))
     model.add(Dense(64, activation='relu'))
     model.add(Dense(1, activation='relu'))
     model.compile(optimizer='adam',loss="mse",metrics=['mae'])
@@ -95,12 +83,8 @@ def base_model_2(vocab_size, max_length):
     model.add(Dense(128, activation='relu'))
     model.add(Dropout(0.5)) # specify a percentage between 0 and 0.5, or larger
     model.add(Dense(1, activation='linear')) # output node
-    model.compile(optimizer='adam',loss=custom_loss_function,metrics=['mean_absolute_error'])
+    model.compile(optimizer='adam',loss="mse",metrics=['mean_absolute_error'])
     return model
-
-def custom_loss_function(y_true, y_pred):
-   squared_difference = tf.square(10*(y_true - y_pred))
-   return tf.reduce_mean(squared_difference, axis=-1)
 
 def plotHistory(history):
     # list all data in history
@@ -128,17 +112,18 @@ def trainClusterNetwork(cluster: int, avg_clust_ratings: pd.DataFrame,
 
     print(f"Preparing network input for cluster {cluster}...")
     # Add book summaries to the avg_clust_ratings df
-    print(avg_clust_ratings.loc[avg_clust_ratings["Cluster"]==cluster].head())
+    #print(avg_clust_ratings.loc[avg_clust_ratings["Cluster"]==cluster].head())
     cluster_ratings = pd.merge(
         right=avg_clust_ratings.loc[avg_clust_ratings["Cluster"]==cluster],
         left=books, on="isbn", validate="one_to_one")
+    #print(cluster_ratings.sort_values(by="isbn").head(20))
     summaries = cluster_ratings["summary"].to_list()
     ratings = cluster_ratings["rating"].to_list()
 
     X, Y, model = getNetworkInput(summaries, ratings, vocab_size, max_length)
     print(f"Training network for cluster {cluster}...")
 
-    # Print input and label shapes
+    print("Network and label shapes:")
     print(X.shape)
     print(Y.shape)
     # Print model summary
@@ -151,6 +136,7 @@ def trainClusterNetwork(cluster: int, avg_clust_ratings: pd.DataFrame,
     return model
 
 def trainSingleNetwork(books, book_ratings, vocab_size: int, max_length: int, classifier = False):
+    print("Training network based on ALL average ratings. This might take a while...")
     summaries, ratings = getAllSummariesAndRatings(books, book_ratings)
     X, Y, model = getNetworkInput(summaries, ratings,  vocab_size=vocab_size, max_length=max_length, classifier=classifier)
     # Print input and label shapes
@@ -204,22 +190,6 @@ def classifier_model_1(vocab_size, max_length):
     model.compile(optimizer='adam',loss="binary_crossentropy",metrics=['acc'])
     return model
 
-def predictClustMissingRatings(k: int, avg_clust_ratings: pd.DataFrame, books:pd.DataFrame, models: list[Sequential], vocab_size, max_length):
-    predicted_ratings = []
-    for i in range(k):
-        print(f"Preparing network input for cluster {i}...")
-        # Get books that have not been rated by cluster
-        cluster_ratings = pd.merge(right=avg_clust_ratings.loc[avg_clust_ratings["Cluster"]==i], left=books, on="isbn", validate="one_to_one", how="left", indicator=True)
-        summaries = cluster_ratings["summary"].loc[cluster_ratings["_merge"]=="left_only"].to_list()
-        ratings = [0 for i in range(len(summaries))]
-
-        X, _, _ = getNetworkInput(summaries, ratings, vocab_size=vocab_size, max_length=max_length)
-        print(X.shape)
-        print(X)
-        predicted_ratings.append(models[i].predict(X))
-
-    return predicted_ratings
-
 def runNetworks():
     books = pd.read_csv(BOOKS)
     book_ratings = pd.read_csv(RATINGS)
@@ -228,11 +198,8 @@ def runNetworks():
     print(f"Calculating vocab size...")
     vs, ml = calculateVocab(books)
     print(f"Vocab size: {vs}, Max length: {ml}")
-    #model = trainSingleNetwork(books, book_ratings, vocab_size=vs, max_length=ml, classifier=False)
-    model = trainClusterNetwork(1, avg_clust_ratings, books, vocab_size=vs, max_length=ml)
-    ## Get book summary (iloc returns list, so summaries
-    #clust_miss_ratings = predictClustMissingRatings(1, avg_clust_ratings, books, models)
-    #print(clust_miss_ratings[:5])
+    model = trainSingleNetwork(books, book_ratings, vocab_size=vs, max_length=ml, classifier=False)
+    #models = [trainClusterNetwork(i, avg_clust_ratings, books, vocab_size=vs, max_length=ml) for i in range(3)]
 
 def checkRatings():
     book_ratings = pd.read_csv(RATINGS)
@@ -243,3 +210,5 @@ def checkRatings():
                 print(rat)
         except:
             print("Not a number!")
+
+#runNetworks()

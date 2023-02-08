@@ -4,7 +4,7 @@ from keras.models import Sequential
 from clustering import kPrototypes
 import timeit
 from random import randint
-from emb_layer_networks import getNetworkInput, pad_sequences, preProcessSummaryv3, one_hot
+from emb_layer_networks import getNetworkInput, pad_sequences, preProcessSummaryv3, one_hot, prepareSummaries
 
 # Paths
 INPUT_FILES = "Files/Input/"
@@ -15,12 +15,13 @@ BOOKS = INPUT_FILES + "BX-Books.csv"
 
 PROCESSED_FILES = "Files/Processed/"
 CLUSTER_ASSIGNED_USERS = PROCESSED_FILES + "Cluster-Assigned-Users.csv"
+AVG_CLUSTER_RATINGS = PROCESSED_FILES + "Average-Cluster-Rating.csv"
+CLUSTER_ASSIGNED_USERS = PROCESSED_FILES + "Cluster-Assigned-Users.csv"
 
 USER_R_WEIGHT = 1.25
 
 # Maximum valid age. Higher ages are considered false entries.
 MAX_AGE = 120
-DEF_AGE = MAX_AGE // 2
 # Minimum population of a (probably) valid country.
 MIN_VAL_POP = 2
 # Rating to use when rating is not found (out of 10)
@@ -37,7 +38,8 @@ def calculateCombinedScores(es_reply: dict, user_id: int, use_cluster_ratings:
         bool = False, avg_clust_ratings: pd.DataFrame = None,
         cluster_assigned_users: pd.DataFrame = None, use_nn = 0,
         model: Sequential = None, vectorized_books: pd.DataFrame = None,
-        books: pd.DataFrame = None, vocab_size: int = None, max_length: int = None) -> pd.DataFrame:
+        nn_books:pd.DataFrame = None, vocab_size: int = None,
+        max_length: int = None) -> pd.DataFrame:
     """Function that accepts as inputs the reply from ElasticSearch, user's id
     and all of their ratings and returns a sorted list of documents with the
     updated combined scores, which are calculated using the combinedScoreFunc."""
@@ -58,6 +60,13 @@ def calculateCombinedScores(es_reply: dict, user_id: int, use_cluster_ratings:
             users_cluster = cluster_assigned_users["Cluster"].\
                 loc[cluster_assigned_users["User_ID"] == user_id].iloc[0]
             print(f"User {user_id} belongs in cluster {users_cluster}")
+            # Predict all books that need predicting from nn
+            if use_nn==2:
+                summaries = nn_books["summary"].to_list()
+                X = prepareSummaries(summaries, vocab_size, max_length)
+                predictions = model.predict(X)
+                nn_books["NN_Rating"] = predictions
+                print(nn_books.head())
         except:
             print(f"User {user_id} doesn't exist in database.")
             print("Scores with clustering will be the same as scores without clustering.")
@@ -81,8 +90,7 @@ def calculateCombinedScores(es_reply: dict, user_id: int, use_cluster_ratings:
             else:
                 user_rating = getAvgClusterRating(
                     users_cluster, isbn, avg_clust_ratings,
-                    use_nn, model, vectorized_books, books,
-                    vocab_size=vocab_size, max_length=max_length
+                    use_nn, model, vectorized_books, nn_books
                 )
     
         # Combined score will be calculated using combinedScoreFunc
@@ -187,8 +195,7 @@ def createAvgClusterRatings(
 def getAvgClusterRating(users_cluster: int, isbn: str, avg_clust_ratings:
                         pd.DataFrame, use_nn: int, model: Sequential = None,
                         vectorized_books: pd.DataFrame = None,
-                        books: pd.DataFrame = None, vocab_size: int = None,
-                        max_length: int = None) -> tuple:
+                        nn_books: pd.DataFrame = None) -> float:
     """Given a user id and an book's isbn, it returns the
     average rating of user's cluster for the specified book."""
 
@@ -209,14 +216,7 @@ def getAvgClusterRating(users_cluster: int, isbn: str, avg_clust_ratings:
             return model.predict(vect_sum)[0][0]
         # Not using vectorized books
         elif use_nn == 2:
-            summary = books[books["isbn"]==isbn]["summary"].to_list()[0]
-            # Preprocess summary
-            preproc_summary = preProcessSummaryv3(summary)
-            # One hot encode words of documents
-            encoded_sum = one_hot(preproc_summary, vocab_size)
-            # Add padding
-            X = pad_sequences([encoded_sum],maxlen=max_length,padding='post')
-            return model.predict(X)[0][0]
+            return nn_books["NN_Rating"].loc[nn_books["isbn"] == isbn][0]
         return DEFAULT_RATING
 
 def getUserRatings(user_id: int, filename: str = RATINGS) -> pd.DataFrame:
@@ -227,7 +227,7 @@ def getUserRatings(user_id: int, filename: str = RATINGS) -> pd.DataFrame:
 
 def askForPreload(k, processed_users) -> pd.DataFrame:
     while True:
-        pre_load = input("Try loading pre-trained clustered users from file? (y/n): ")
+        pre_load = input("Try loading clustered users from file? (y/n): ")
         if pre_load == "y":
             try:
                 clust_assigned_users = pd.read_csv(CLUSTER_ASSIGNED_USERS)

@@ -7,8 +7,13 @@ import doc2vec
 import doc2vec_networks
 import emb_layer_networks
 import pandas as pd
+import json
 
-BOOKS = "Files/Input/BX-Books.csv"
+# Paths
+INPUT_FILES = "Files/Input/"
+
+RATINGS = INPUT_FILES + "BX-Book-Ratings.csv"
+BOOKS = INPUT_FILES + "BX-Books.csv"
 
 PROCESSED_FILES = "Files/Processed/"
 
@@ -127,26 +132,37 @@ def main():
     combined_scores_clusters.to_csv(SCORES_W_CLUST, index=False)
     # Print the scores of the 5 best matches
     print("\nBest 10 matches with clustering:\n")
-    print(combined_scores.head(30))
+    print(combined_scores.head(10))
     
     input("\nPress enter to continue to neural networks...\n")
 
     ############################## NEURAL NETWORK ##############################
     
     books = pd.read_csv(BOOKS)
+    book_ratings = pd.read_csv(RATINGS)
 
     # Use a single model with an embedding layer that vectorizes
     # summaries and later predicts missing ratings
     vocab_size, max_length = emb_layer_networks.calculateVocab(books)
     print(f"Vocab size: {vocab_size}, Max length: {max_length}")
-    model = emb_layer_networks.trainClusterNetwork(users_cluster, 
-                                                   avg_clust_ratings, books,
-                                                   vocab_size, max_length)
+    if users_cluster != -1:
+        # Train a neural network on user's cluster ratings
+        model = emb_layer_networks.trainClusterNetwork(users_cluster, 
+                                                    avg_clust_ratings, books,
+                                                    vocab_size, max_length)
+        # Get books from ES that haven't been rated by user's cluster
+        nn_books = pd.concat([elastic_books, avg_clust_ratings], keys=["isbn"]).drop_duplicates(keep=False)
+    else:
+        model = emb_layer_networks.trainSingleNetwork(books, book_ratings,
+                                                      vocab_size, max_length)
+        nn_books = elastic_books
+        
+    print("Re-calculating combined scores using user's cluster's average book ratings as well as the nn...")
     combined_scores_clusters_nn, _ = functions.calculateCombinedScores(
         es_reply, user_id, use_cluster_ratings=True,
         avg_clust_ratings = avg_clust_ratings,
         cluster_assigned_users = cluster_assignement, use_nn=2,
-        model=model, books=books, vocab_size=vocab_size, max_length=max_length)
+        model=model, nn_books=nn_books, vocab_size=vocab_size, max_length=max_length)
     combined_scores_clusters_nn.to_csv(SCORES_W_CLUST_AND_NN_EMB, index=False)  
 
     ## Use a Doc2Vec model to turn summaries into vectors and then train and use another model to predict the missing ratings
