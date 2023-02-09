@@ -43,26 +43,7 @@ def _input(message, input_type=str):
         try:
             return input_type (input(message))
         except: pass
-        
-def askForLoadVectorizedBooks(books:pd.DataFrame) -> pd.DataFrame:
-    while True:
-        pre_load = input("Load vectorized books from file? (y/n): ")
-        if pre_load == "y":
-            try:
-                vectorized_books = pd.read_pickle(BOOKS_VECTORIZED_SUMMARIES_PKL)
-                print("Loaded vectorized books from file.")
-                return vectorized_books
-            except:
-                print("Couldn't find vectorized books file.")
-                break
-        elif pre_load == "n":
-            break
-    print("Vectorizing summaries...")
-    vectorized_books = doc2vec.vectorizeSummaries(books_to_vect=books, trainning_books=books)
-    print("Saving vectorized summaries...")
-    vectorized_books.to_pickle(BOOKS_VECTORIZED_SUMMARIES_PKL)
-    print("Finished vectorizing summaries.")
-    return vectorized_books
+
 
 def main():
     ############################ ELASTICSEARCH #############################
@@ -134,7 +115,7 @@ def main():
     print("Calculating average cluster ratings...")
     avg_clust_ratings = functions.createAvgClusterRatings(cluster_assignement)
 
-    # Try getting user's cluster
+    # Try getting user's cluster 
     try:
         users_cluster = cluster_assignement["cluster"].\
                         loc[cluster_assignement["User_ID"] == user_id].iloc[0]
@@ -188,18 +169,21 @@ def main():
     print("\nBest 10 matches with clustering and neural network:\n")
     print(combined_scores_clusters_nn.head(10))
 
+
     ## Use a Doc2Vec model to turn summaries into vectors and then train and use another model to predict the missing ratings
-    
-    #vectorized_books = askForLoadVectorizedBooks(books)
-    ## Train a neural network model to predict user's cluster average book ratings
-    #print(f"Trainning a neural network model to predict missing ratings of cluster {users_cluster}...")
-    #model = doc2vec_networks.trainClusterNetwork(users_cluster, vectorized_books, avg_clust_ratings)
-    #print("Re-calculating combined scores using user's cluster's average book ratings and neural network...")
-    #combined_scores_clusters_nn, _ = functions.calculateCombinedScores(es_reply, user_id,
-    #    use_cluster_ratings=True, avg_clust_ratings = avg_clust_ratings,
-    #    cluster_assigned_users = cluster_assignement, use_nn=1,
-    #    model=model, vectorized_books=vectorized_books)
-    #combined_scores_clusters_nn.to_csv(SCORES_W_CLUST_AND_NN_D2V, index=False)
+    #doc2vecModel = doc2vec.getDoc2VecModel(books)
+    #vectorized_rel_unrated_books = doc2vec.getVectorizedBooks(rel_unrated_books, doc2vecModel, books)
+    #users_clust_avg_ratings_with_sums = pd.merge(users_clust_avg_ratings, books, on="isbn", validate="one_to_one")
+    #vectorized_cluster_books = doc2vec.getVectorizedBooks(users_clust_avg_ratings_with_sums, doc2vecModel, books)
+    ## Train prediction model
+    #model = doc2vec_networks.trainClusterNetwork(vectorized_cluster_books)
+#
+    #predictions = model.predict(vectorized_rel_unrated_books)
+    #vectorized_rel_unrated_books["NN_Rating"] = predictions
+    #combined_scores_clusters_nn_d2v = functions.calculateCombinedScoresv2(rel_user_ratings, vectorized_rel_unrated_books, rel_clust_rated_books) 
+    #combined_scores_clusters_nn.to_csv(SCORES_W_CLUST_AND_NN_D2V, index=False)  
+    #print("\nBest 10 matches with clustering and doc2vec neural network:\n")
+    #print(combined_scores_clusters_nn_d2v.head(10))
 
 if __name__ == "__main__":
     main()

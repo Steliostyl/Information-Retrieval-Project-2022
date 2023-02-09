@@ -46,17 +46,17 @@ def custom_loss_function(y_true, y_pred):
 def base_model_1():
     # Create model
     model = Sequential()
-    model.add(Dense(256, input_dim=100, activation='relu'))
+    model.add(Dense(256, input_dim=512, activation='relu'))
     #model.add(Dense(256, activation='relu'))
     model.add(Dense(128, activation='relu'))
     model.add(Dense(1, activation='relu'))
-    model.compile(loss=custom_loss_function, optimizer='adam', metrics=["mae"])
+    model.compile(loss="mse", optimizer='adam', metrics=["mae"])
     return model
 
 def base_model_2():
     # Insert the dropout layer
     model = Sequential()
-    model.add(Dense(1000, input_dim=100, activation='relu')) # (features,)
+    model.add(Dense(1000, input_dim=512, activation='relu')) # (features,)
     model.add(Dropout(0.5)) # specify a percentage between 0 and 0.5, or larger
     model.add(Dense(500, activation='relu'))
     model.add(Dropout(0.5)) # specify a percentage between 0 and 0.5, or larger
@@ -92,15 +92,10 @@ def trainClusterNetworks(k: int, avg_clust_ratings: pd.DataFrame, books: pd.Data
 
     return models
 
-def trainClusterNetwork(users_cluster: int, vect_books: pd.DataFrame, avg_clust_ratings: pd.DataFrame) -> Sequential:
-    print(f"Preparing network input for cluster {users_cluster}...")
-    # Get cluster's vectorized summaries and average rating for all their rated books
+def trainClusterNetwork(vectorized_cluster_books: pd.DataFrame) -> Sequential:
     
-    cluster_books = pd.merge(right=avg_clust_ratings.loc[avg_clust_ratings["Cluster"]==users_cluster], left=vect_books, on="isbn", validate="one_to_one")
-    print(cluster_books.head(5))
-    vect_sums = cluster_books["Vectorized_Summary"].to_list()
-    ratings = cluster_books["rating"].to_list()
-    print(f"Training network for cluster {users_cluster}...")
+    vect_sums = vectorized_cluster_books["Vectorized_Summary"].to_list()
+    ratings = vectorized_cluster_books["cluster_rating"].to_list()
     model = trainNetwork(vect_sums, ratings)
 
     return model

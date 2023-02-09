@@ -36,15 +36,12 @@ def trainDoc2VecModel(books: pd.DataFrame) -> Doc2Vec:
     tagged_data = [TaggedDocument(d, [i]) for i, d in enumerate(preproc_sums)]
 
     threads = min(cpu_count(), TC)
-    model = Doc2Vec(tagged_data, min_count = 1, epochs = 10, workers=threads)
+    model = Doc2Vec(tagged_data, min_count = 1, epochs = 10, workers=threads, vector_size=512)
     return model
 
-def vectorizeSummaries(books_to_vect: pd.DataFrame, trainning_books: pd.DataFrame = None) -> pd.DataFrame:
+def vectorizeSummaries(books_to_vect: pd.DataFrame, doc2vecModel: Doc2Vec) -> pd.DataFrame:
     """Vectorize book summaries and add them in a new column of the books dataframe."""
-    
-    doc2vecModel = askForPreload(trainning_books)
 
-    print("Vectorizing books...")
     doc_vectors = []
     summaries = books_to_vect["summary"].to_list()
     for summary in summaries:
@@ -54,7 +51,7 @@ def vectorizeSummaries(books_to_vect: pd.DataFrame, trainning_books: pd.DataFram
 
     return books_to_vect
 
-def askForPreload(training_books) -> Doc2Vec:
+def getDoc2VecModel(training_books: pd.DataFrame = None) -> Doc2Vec:
     while True:
         pre_load = input("Try loading pre-trained Doc2Vec model? (y/n): ")
         if pre_load == "y":
@@ -73,8 +70,66 @@ def askForPreload(training_books) -> Doc2Vec:
     model.save(D2V_MODEL)
 
     return model
+        
+def getVectorizedBooks(books_to_vect:pd.DataFrame, doc2VecModel: Doc2Vec, books: pd.DataFrame = None) -> pd.DataFrame:
+    while True:
+        pre_load = input("Load vectorized books from file? (y/n): ")
+        if pre_load == "y":
+            try:
+                vectorized_books = pd.read_pickle(BOOKS_VECTORIZED_SUMMARIES_PKL)
+                vectorized_es_books = pd.merge(books_to_vect, vectorized_books, on="isbn")
+                print("Loaded vectorized books from file.")
+                return vectorized_es_books
+            except:
+                print("Couldn't find vectorized books file.")
+                break
+        elif pre_load == "n":
+            break
+    print("Vectorizing elastic books' summaries...")
 
-#print("Turning summaries into vectors...")
-#books_with_vecsums = vectorizeSummaries(books, model)
-#print("Saving vectorized summaries...")
-#books_with_vecsums.to_pickle(BOOKS_VECTORIZED_SUMMARIES_PKL)
+    vectorized_es_books = vectorizeSummaries(books_to_vect=books_to_vect, doc2vecModel=doc2VecModel)
+
+    print("Finished vectorizing elastic books' summaries.")
+    if type(books) is None:
+        return vectorized_es_books
+    
+    while True:
+        pre_load = input("Vectorize all books and save them to file? (y/n): ")
+        if pre_load == "y":
+            df = pd.merge(vectorized_es_books, books, on="isbn", how="outer", indicator=True)
+            unvectorized_books = df[df["_merge"] == "right_only"]
+            vect_unvect_books = vectorizeSummaries(unvectorized_books, books)
+            all_vectorized_books = pd.concat([vectorized_es_books, vect_unvect_books], ignore_index=True)
+            all_vectorized_books.to_pickle(BOOKS_VECTORIZED_SUMMARIES_PKL)
+            break
+        elif pre_load == "n":
+            break
+        
+    return vectorized_es_books
+
+def run():
+    elastic_books = pd.read_csv("Files/Processed/Elastic_Books.csv")
+    books = pd.read_csv("Files/Input/BX-Books.csv")
+    avg_clust_ratings = pd.read_csv("Files/Processed/Average-Cluster-Rating.csv")
+
+    # Get average cluster ratings of user's cluster
+    users_clust_avg_ratings = avg_clust_ratings.loc[avg_clust_ratings["cluster"] == 0]
+    df = pd.merge(elastic_books, users_clust_avg_ratings, on=['isbn'], how="outer", indicator=True)
+    # Get books in es_books but not in users_clust_avg_ratings
+    rel_unrated_books = df[df['_merge'] == 'left_only']
+    
+    doc2vecModel = getDoc2VecModel(books)
+    vectorized_rel_unrated_books = getVectorizedBooks(rel_unrated_books, doc2vecModel, books)
+    users_clust_avg_ratings_with_sums = pd.merge(users_clust_avg_ratings, books, on="isbn", validate="one_to_one")
+    vectorized_cluster_books = getVectorizedBooks(users_clust_avg_ratings_with_sums, doc2vecModel, books)
+    # Train prediction model
+    import doc2vec_networks
+    model = doc2vec_networks.trainClusterNetwork(vectorized_cluster_books)
+
+    vect_sums_list = vectorized_rel_unrated_books["Vectorized_Summary"].to_list()
+    X = pd.DataFrame(vect_sums_list, columns=["vect"+str(i) for i in range(len(vect_sums_list[0]))])
+    predictions = model.predict(X)
+    vectorized_rel_unrated_books["NN_Rating"] = predictions
+    print(vectorized_rel_unrated_books.head())
+
+#run()
