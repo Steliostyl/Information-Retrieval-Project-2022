@@ -27,9 +27,11 @@ def getClusteringInput(proc_users: pd.DataFrame):
 def plot_elbow_curve(start: int, end: int, sample_size: int, proc_users: pd.DataFrame, kM: bool = False) -> None:
     """Plots elbow curve. Used for optimizing K."""
 
-    X = getClusteringInput(proc_users)
-    if sample_size > 0 and sample_size < len(X):
-        X = X[:sample_size]
+    if kM == True:
+        X = StandardScaler().fit_transform(proc_users[['Age']])[:sample_size]
+        y = proc_users["Country_ID"].values[:sample_size]
+    else:
+        X = getClusteringInput(proc_users)
 
     categorical_index = [1]
     no_of_clusters = list(range(start, end+1))
@@ -41,7 +43,7 @@ def plot_elbow_curve(start: int, end: int, sample_size: int, proc_users: pd.Data
         print(f"Testing with {k} clusters...")
         if kM:
             test_model = KMeans(k, n_init=N_INIT)
-            test_model.fit_predict(X, proc_users["Country_ID"].to_list())
+            test_model.fit_predict(X, y)
             cost_values.append(test_model.inertia_)
         else:
             test_model = KPrototypes(

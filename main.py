@@ -124,7 +124,7 @@ def main():
     processed_users = functions.preLoadProcUsers()
 
     # Use kMeans? If set to false, kPrototypes is used.
-    kM = False
+    kM = True
     # Plot elbow curve to help determine optimal number of clusters
     print("\nPlotting elbow curve...")
     clustering.plot_elbow_curve(2, 12, 10_000, processed_users, kM)

@@ -59,7 +59,7 @@ def base_model_1(vocab_size, max_length):
     max_length = max_length
     # Create model
     model = Sequential()
-    model.add(Embedding(input_dim=vocab_size, output_dim=512,
+    model.add(Embedding(input_dim=vocab_size, output_dim=256,
                         input_length=max_length))
     model.add(Flatten())
     model.add(Dense(128, activation='relu'))
