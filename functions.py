@@ -1,7 +1,7 @@
 import re
 import pandas as pd
 from keras.models import Sequential
-from clustering import kPrototypes
+from clustering import kPrototypes, kMeans
 import timeit
 from random import randint
 from emb_layer_networks import prepareSummaries
@@ -52,7 +52,7 @@ def preLoadProcUsers() -> pd.DataFrame:
     proc_users.to_csv(PROC_USERS,index=False)
     return proc_users
 
-def preLoadClusterAssignement(k: int, proc_users: pd.DataFrame) -> pd.DataFrame:
+def preLoadClusterAssignement(k: int, proc_users: pd.DataFrame, kM: bool = False) -> pd.DataFrame:
     while True:
         pre_load = input("Load clusters from file? (y/n): ")
         if pre_load == "y":
@@ -66,7 +66,10 @@ def preLoadClusterAssignement(k: int, proc_users: pd.DataFrame) -> pd.DataFrame:
         elif pre_load == "n":
             break
     print(f"Clustering users in {k} clusters...")
-    cluster_assigned_users = kPrototypes(k, proc_users)
+    if kM:
+        cluster_assigned_users = kMeans(k, proc_users)
+    else:
+        cluster_assigned_users = kPrototypes(k, proc_users)
     cluster_assigned_users.to_csv(CLUSTER_ASSIGNED_USERS, index=False)
     return cluster_assigned_users
 
