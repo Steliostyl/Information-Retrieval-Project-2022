@@ -1,4 +1,4 @@
-User_ID,Age,Country,Country_ID,Cluster
+User_ID,Age,Country,Country_ID,cluster
 1,49,usa,0,1
 2,18,usa,0,2
 3,59,russia,1,1

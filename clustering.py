@@ -70,6 +70,6 @@ def kPrototypes(k: int, proc_users: pd.DataFrame) -> pd.DataFrame:
         mark_array, categorical=categorical_features_idx
     )
     # Add Cluster column to dataframe
-    proc_users['Cluster'] = list(clusters)
+    proc_users['cluster'] = list(clusters)
 
     return proc_users

@@ -106,22 +106,22 @@ def plotHistory(history):
     plt.legend(['train', 'test'], loc='upper left')
     plt.show()
 
-def trainClusterNetwork(cluster: int, avg_clust_ratings: pd.DataFrame,
+def trainClusterNetwork(avg_clust_ratings: pd.DataFrame,
                         books: pd.DataFrame, vocab_size: int, max_length: int):
     """Train regression NN on user’s cluster’s average ratings"""
 
-    print(f"Preparing network input for cluster {cluster}...")
+    print(f"Preparing network input...")
     # Add book summaries to the avg_clust_ratings df
     #print(avg_clust_ratings.loc[avg_clust_ratings["Cluster"]==cluster].head())
     cluster_ratings = pd.merge(
-        right=avg_clust_ratings.loc[avg_clust_ratings["Cluster"]==cluster],
-        left=books, on="isbn", validate="one_to_one")
+        avg_clust_ratings, books,
+        on="isbn", validate="one_to_one")
     #print(cluster_ratings.sort_values(by="isbn").head(20))
     summaries = cluster_ratings["summary"].to_list()
-    ratings = cluster_ratings["rating"].to_list()
+    ratings = cluster_ratings["cluster_rating"].to_list()
 
     X, Y, model = getNetworkInput(summaries, ratings, vocab_size, max_length)
-    print(f"Training network for cluster {cluster}...")
+    print(f"Training cluster's network...")
 
     print("Network and label shapes:")
     print(X.shape)
@@ -129,7 +129,7 @@ def trainClusterNetwork(cluster: int, avg_clust_ratings: pd.DataFrame,
     # Print model summary
     model.summary()
     # Start training
-    history = model.fit(X, Y, validation_split=0.3, epochs=10,
+    history = model.fit(X, Y, validation_split=0.3, epochs=5,
                         batch_size=10, verbose=1)
     plotHistory(history)
 
@@ -145,7 +145,7 @@ def trainSingleNetwork(books, book_ratings, vocab_size: int, max_length: int, cl
     # Print model summary
     model.summary()
     # Start training
-    history = model.fit(X, Y, validation_split=0.3, epochs=10, batch_size=10, verbose=1)
+    history = model.fit(X, Y, validation_split=0.3, epochs=5, batch_size=10, verbose=1)
     plotHistory(history)
     
     plotHistory(history)

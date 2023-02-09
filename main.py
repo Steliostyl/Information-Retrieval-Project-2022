@@ -2,12 +2,11 @@ from elasticsearch import Elasticsearch
 from pprint import pprint
 import elastic
 import functions
-#import clustering
+import clustering
 import doc2vec
 import doc2vec_networks
 import emb_layer_networks
 import pandas as pd
-import json
 
 # Paths
 INPUT_FILES = "Files/Input/"
@@ -54,11 +53,11 @@ def askForLoadVectorizedBooks(books:pd.DataFrame) -> pd.DataFrame:
                 print("Loaded vectorized books from file.")
                 return vectorized_books
             except:
-                print("Couldn't find vectorized books file. Vectorizing summaries...")
+                print("Couldn't find vectorized books file.")
                 break
         elif pre_load == "n":
-            print("Clustering users...")
             break
+    print("Vectorizing summaries...")
     vectorized_books = doc2vec.vectorizeSummaries(books_to_vect=books, trainning_books=books)
     print("Saving vectorized summaries...")
     vectorized_books.to_pickle(BOOKS_VECTORIZED_SUMMARIES_PKL)
@@ -87,17 +86,28 @@ def main():
     search_string = input("Enter search string:")
     user_id = _input("Enter your user ID (must be an integer): ", int)
     es_reply = elastic.makeQuery(es, search_string)
-    es_books_list = [[entry["_score"]] + (list(entry["_source"].values())) for entry in es_reply["hits"]]
-    elastic_books = pd.DataFrame(es_books_list, columns=["score","isbn","book_title","book_author","year_of_publication","publisher","summary","category"])
+    max_score = es_reply["max_score"]
+    es_books_list = [[10*entry["_score"]/max_score] + (list(entry["_source"].values())) for entry in es_reply["hits"]]
+    elastic_books = pd.DataFrame(es_books_list, columns=["norm_es_score","isbn","book_title","book_author","year_of_publication","publisher","summary","category"])
     elastic_books.to_csv(ELASTIC_BOOKS, index=False)
 
     # Print results summary
     print(f"\nElasticsearch returned {len(es_reply['hits'])} books. The 5 best matches are:")
     print(elastic_books.head(10))
 
+    # Get user ratings
+    ratings = pd.read_csv(RATINGS)
+    user_ratings = ratings.loc[ratings["uid"] == user_id]
+    user_ratings.rename(columns={"rating": "user_rating"}, inplace=True)
+    df = pd.merge(elastic_books, user_ratings, on=['isbn'], how="outer", indicator=True)
+    rel_user_ratings = df[df["_merge"] == "both"]
+    rel_elastic_unrated_books = df[df["_merge"] == "left_only"]
+
+
     # Get the combined scores for all replies
     print("\nCalculating combined scores...")
-    combined_scores, _ = functions.calculateCombinedScores(es_reply, user_id)
+    #combined_scores, _ = functions.calculateCombinedScores(es_reply, user_id)
+    combined_scores = functions.calculateCombinedScoresv2(rel_user_ratings, rel_elastic_unrated_books)
     combined_scores.to_csv(SCORES_NO_CLUST, index=False)
 
     # Print the scores of the 5 best matches
@@ -111,9 +121,7 @@ def main():
     # Create a CSV containing users sorted by their country
     # Entries that have a high chance of being fake are ignored
     print("Creating processed users CSV...")
-    processed_users = functions.processUsersCSV()
-    processed_users.to_csv(PROC_USERS, index=False)
-    #print(processed_users.head(10))
+    processed_users = functions.preLoadProcUsers()
 
     # Plot elbow curve to help determine optimal number of clusters
     #print("\nPlotting elbow curve...")
@@ -121,18 +129,34 @@ def main():
     k = 3#_input("Choose number of clusters to use: ", int)
 
     # Generate or load cluster assignement from file and calculate average cluster ratings for their rated books.
-    cluster_assignement, avg_clust_ratings = functions.createAvgClusterRatings(k, processed_users)
-    cluster_assignement.to_csv(CLUSTER_ASSIGNED_USERS, index=False)
-    avg_clust_ratings.to_csv(AVG_CLUSTER_RATINGS, index=False)
+    cluster_assignement = functions.preLoadClusterAssignement(k, processed_users)
+
+    print("Calculating average cluster ratings...")
+    avg_clust_ratings = functions.createAvgClusterRatings(cluster_assignement)
+
+    # Try getting user's cluster
+    try:
+        users_cluster = cluster_assignement["cluster"].\
+                        loc[cluster_assignement["User_ID"] == user_id].iloc[0]
+        print(f"User {user_id} belongs in cluster {users_cluster}")
+        # Get average cluster ratings of user's cluster
+        users_clust_avg_ratings = avg_clust_ratings.loc[avg_clust_ratings["cluster"] == users_cluster]
+        df = pd.merge(elastic_books, users_clust_avg_ratings, on=['isbn'], how="outer", indicator=True)
+        # Get books in es_books but not in users_clust_avg_ratings
+        rel_unrated_books = df[df['_merge'] == 'left_only']
+        # Get intersection of es_books and users_clust_avg_ratings
+        rel_clust_rated_books = df[df['_merge'] == 'both']
+    except:
+        rel_clust_rated_books = pd.DataFrame()
+        users_cluster = -1
+        print(f"User {user_id} wasn't found in BX-Users.csv")
     
     print("Re-calculating combined scores using user's cluster's average book ratings...")
-    combined_scores_clusters, users_cluster = functions.calculateCombinedScores(
-        es_reply, user_id, use_cluster_ratings=True, avg_clust_ratings = avg_clust_ratings,
-        cluster_assigned_users = cluster_assignement)
+    combined_scores_clusters = functions.calculateCombinedScoresv2(rel_user_ratings, rel_unrated_books, rel_clust_rated_books)
     combined_scores_clusters.to_csv(SCORES_W_CLUST, index=False)
-    # Print the scores of the 5 best matches
+    
     print("\nBest 10 matches with clustering:\n")
-    print(combined_scores.head(10))
+    print(combined_scores_clusters.head(10))
     
     input("\nPress enter to continue to neural networks...\n")
 
@@ -143,27 +167,26 @@ def main():
 
     # Use a single model with an embedding layer that vectorizes
     # summaries and later predicts missing ratings
+    print(f"Calculating vocabulary size and max summary length...")
     vocab_size, max_length = emb_layer_networks.calculateVocab(books)
     print(f"Vocab size: {vocab_size}, Max length: {max_length}")
-    if users_cluster != -1:
+    if len(rel_clust_rated_books) > 0:
         # Train a neural network on user's cluster ratings
-        model = emb_layer_networks.trainClusterNetwork(users_cluster, 
-                                                    avg_clust_ratings, books,
-                                                    vocab_size, max_length)
-        # Get books from ES that haven't been rated by user's cluster
-        nn_books = pd.concat([elastic_books, avg_clust_ratings], keys=["isbn"]).drop_duplicates(keep=False)
+        model = emb_layer_networks.trainClusterNetwork(users_clust_avg_ratings,
+                                                       books, vocab_size,
+                                                       max_length)
     else:
         model = emb_layer_networks.trainSingleNetwork(books, book_ratings,
                                                       vocab_size, max_length)
-        nn_books = elastic_books
         
+    # Get the predicted ratings of unratted books
+    rel_nn_rated_books = functions.getPredictedRatings(rel_unrated_books, model, vocab_size, max_length)
+
     print("Re-calculating combined scores using user's cluster's average book ratings as well as the nn...")
-    combined_scores_clusters_nn, _ = functions.calculateCombinedScores(
-        es_reply, user_id, use_cluster_ratings=True,
-        avg_clust_ratings = avg_clust_ratings,
-        cluster_assigned_users = cluster_assignement, use_nn=2,
-        model=model, nn_books=nn_books, vocab_size=vocab_size, max_length=max_length)
+    combined_scores_clusters_nn = functions.calculateCombinedScoresv2(rel_user_ratings, rel_nn_rated_books, rel_clust_rated_books)
     combined_scores_clusters_nn.to_csv(SCORES_W_CLUST_AND_NN_EMB, index=False)  
+    print("\nBest 10 matches with clustering and neural network:\n")
+    print(combined_scores_clusters_nn.head(10))
 
     ## Use a Doc2Vec model to turn summaries into vectors and then train and use another model to predict the missing ratings
     

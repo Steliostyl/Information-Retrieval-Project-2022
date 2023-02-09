@@ -4,7 +4,8 @@ from keras.models import Sequential
 from clustering import kPrototypes
 import timeit
 from random import randint
-from emb_layer_networks import getNetworkInput, pad_sequences, preProcessSummaryv3, one_hot, prepareSummaries
+from emb_layer_networks import prepareSummaries
+pd.options.mode.chained_assignment = None  # default='warn'
 
 # Paths
 INPUT_FILES = "Files/Input/"
@@ -17,6 +18,12 @@ PROCESSED_FILES = "Files/Processed/"
 CLUSTER_ASSIGNED_USERS = PROCESSED_FILES + "Cluster-Assigned-Users.csv"
 AVG_CLUSTER_RATINGS = PROCESSED_FILES + "Average-Cluster-Rating.csv"
 CLUSTER_ASSIGNED_USERS = PROCESSED_FILES + "Cluster-Assigned-Users.csv"
+PROC_USERS = PROCESSED_FILES + "Processed-Users.csv"
+
+OUTPUT_FILES = "Files/Output/"
+
+SCORES_NO_CLUST = OUTPUT_FILES + "Scores-No-Clustering.csv"
+SCORES_W_CLUST = OUTPUT_FILES + "Scores-With-Clustering.csv"
 
 USER_R_WEIGHT = 1.25
 
@@ -26,6 +33,42 @@ MAX_AGE = 120
 MIN_VAL_POP = 2
 # Rating to use when rating is not found (out of 10)
 DEFAULT_RATING = 5
+    
+def preLoadProcUsers() -> pd.DataFrame:
+    while True:
+        pre_load = input("Load processed users from file? (y/n): ")
+        if pre_load == "y":
+            try:
+                proc_users = pd.read_csv(PROC_USERS)
+                print("Loaded processed users.")
+                return proc_users
+            except:
+                print("Failed to load processed users.")
+                break
+        elif pre_load == "n":
+            break
+    print("Processing users...")
+    proc_users = processUsersCSV()
+    proc_users.to_csv(PROC_USERS,index=False)
+    return proc_users
+
+def preLoadClusterAssignement(k: int, proc_users: pd.DataFrame) -> pd.DataFrame:
+    while True:
+        pre_load = input("Load clusters from file? (y/n): ")
+        if pre_load == "y":
+            try:
+                cluster_assigned_users = pd.read_csv(CLUSTER_ASSIGNED_USERS)
+                print("Loaded cluster assigned users.")
+                return cluster_assigned_users
+            except:
+                print("Failed to load cluster assigned users.")
+                break
+        elif pre_load == "n":
+            break
+    print(f"Clustering users in {k} clusters...")
+    cluster_assigned_users = kPrototypes(k, proc_users)
+    cluster_assigned_users.to_csv(CLUSTER_ASSIGNED_USERS, index=False)
+    return cluster_assigned_users
 
 def combinedScoreFunc(norm_es_score: float, user_rating: float) -> float:
     """Function that accepts as inputs the elastic search score of a book,
@@ -33,88 +76,6 @@ def combinedScoreFunc(norm_es_score: float, user_rating: float) -> float:
 
     # Add the normalized and weighted scores and scale them in the range [0, 10]
     return (USER_R_WEIGHT * user_rating + norm_es_score) / (1 + USER_R_WEIGHT)
-
-def calculateCombinedScores(es_reply: dict, user_id: int, use_cluster_ratings:
-        bool = False, avg_clust_ratings: pd.DataFrame = None,
-        cluster_assigned_users: pd.DataFrame = None, use_nn = 0,
-        model: Sequential = None, vectorized_books: pd.DataFrame = None,
-        nn_books:pd.DataFrame = None, vocab_size: int = None,
-        max_length: int = None) -> pd.DataFrame:
-    """Function that accepts as inputs the reply from ElasticSearch, user's id
-    and all of their ratings and returns a sorted list of documents with the
-    updated combined scores, which are calculated using the combinedScoreFunc."""
-
-    es_books = es_reply["hits"]
-    max_score = es_reply["max_score"]
-    user_ratings = getUserRatings(user_id)
-    print(f"User {user_id} has rated {len(user_ratings)} book(s).")
-
-    # List to be filled with book entries
-    # and their combined scores
-    books_list = []
-    users_cluster = -1
-
-    # Get user's cluster
-    if use_cluster_ratings:
-        try:
-            users_cluster = cluster_assigned_users["Cluster"].\
-                loc[cluster_assigned_users["User_ID"] == user_id].iloc[0]
-            print(f"User {user_id} belongs in cluster {users_cluster}")
-            # Predict all books that need predicting from nn
-            if use_nn==2:
-                summaries = nn_books["summary"].to_list()
-                X = prepareSummaries(summaries, vocab_size, max_length)
-                predictions = model.predict(X)
-                nn_books["NN_Rating"] = predictions
-                print(nn_books.head())
-        except:
-            print(f"User {user_id} doesn't exist in database.")
-            print("Scores with clustering will be the same as scores without clustering.")
-
-    # Iterate through the documents of the ES reply
-    for book in es_books:
-        isbn = book["_source"]["isbn"]
-        norm_es_score = 10*book["_score"]/max_score
-        
-        # User has rated book
-        try:
-            # Get user's book rating and typecast it to float (from string)
-            user_rating = float(user_ratings.\
-                loc[user_ratings["isbn"] == isbn]["rating"].iloc[0])
-        # User has not rated this book
-        except:
-            # User doesn't exist in the database or function has 
-            # been called with arg use_cluster_ratings = False
-            if users_cluster == -1:
-                user_rating = DEFAULT_RATING
-            else:
-                user_rating = getAvgClusterRating(
-                    users_cluster, isbn, avg_clust_ratings,
-                    use_nn, model, vectorized_books, nn_books
-                )
-    
-        # Combined score will be calculated using combinedScoreFunc
-        score = combinedScoreFunc(norm_es_score, user_rating)
-        # Create a new book entry as a list
-        new_book = [
-            score, user_rating, norm_es_score, isbn,
-            book['_source']["book_title"],
-            book['_source']["book_author"],
-            book['_source']["year_of_publication"],
-            book['_source']["publisher"],
-            book['_source']["summary"],
-            book['_source']["category"]
-            ]
-        books_list.append(new_book)
-
-    # Create a new dataframe from books_list and sort it by score
-    best_matches = pd.DataFrame(data=books_list, columns=[
-        "score", "user_rating", "es_scaled_score", "isbn", "book_title",
-        "book_author", "year_of_publication", "publisher", "summary", 
-        "category"]).sort_values(by="score", ascending=False)
-
-    # Only keep the best 10% documents
-    return (best_matches.head(len(best_matches.index)//10), users_cluster)
 
 def processUsersCSV() -> pd.DataFrame:
     """Extract vital information from BX-Users csv and save it to a new CSV."""
@@ -165,21 +126,14 @@ def processUsersCSV() -> pd.DataFrame:
     
     return users_df
 
-def padSummary(summary, max_length):
-    padded_sum = summary.extend([0]*(max_length - len(summary)))
-    print(summary)
-    print(padded_sum)
-    return padded_sum
-
 def createAvgClusterRatings(
-        k, processed_users
-    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        cluster_assignement
+    ) -> pd.DataFrame:
     """Function that accepts as input the cluster assignement DataFrame and
     restores User IDs to it. Then, it combines this DF with the Book-Ratings
     CSV, averaging out the book ratings per cluster. The combined DF contains
     the columns isbn, cluster and rating and is finally returned."""
 
-    cluster_assignement = askForPreload(k , processed_users)
     # Open book ratings CSV in read mode
     books_ratings_df = pd.read_csv(RATINGS)
     # Merge the two DataFrames on UIDs
@@ -188,42 +142,12 @@ def createAvgClusterRatings(
     # Drop useless columns
     result.drop(["uid", "User_ID", "Country", "Country_ID", "Age"], axis=1, inplace=True)
     # Group ratings by isbn and Cluster and sort resulting DataFrame
-    avg_cluster_ratings = result.groupby(["isbn", "Cluster"], as_index=False).mean()
+    avg_cluster_ratings = result.groupby(["isbn", "cluster"], as_index=False).mean()
+    #cluster_rating
+    avg_cluster_ratings.rename(columns={"rating": "cluster_rating"}, inplace=True)
+    avg_cluster_ratings.to_csv(AVG_CLUSTER_RATINGS, index=False)
 
-    return (cluster_assignement, avg_cluster_ratings)
-
-def getAvgClusterRating(users_cluster: int, isbn: str, avg_clust_ratings:
-                        pd.DataFrame, use_nn: int, model: Sequential = None,
-                        vectorized_books: pd.DataFrame = None,
-                        nn_books: pd.DataFrame = None) -> float:
-    """Given a user id and an book's isbn, it returns the
-    average rating of user's cluster for the specified book."""
-
-    # Try getting user's cluster's rating of specified book
-    try:
-        rating = avg_clust_ratings.loc[(avg_clust_ratings["isbn"] == isbn) &\
-                                       (avg_clust_ratings["Cluster"] ==
-                                        users_cluster)]["rating"].iloc[0]
-        return rating
-    # If a book hasn't been rated by a cluster and use_nn = 0,
-    # return the median value of 5 stars out of 10
-    except:
-        # Using vectorized books
-        if use_nn == 1:
-            vect_sum = vectorized_books["Vectorized_Summary"].\
-                loc[vectorized_books["isbn"] == isbn].to_list()[0]\
-                    .reshape(1, -1)
-            return model.predict(vect_sum)[0][0]
-        # Not using vectorized books
-        elif use_nn == 2:
-            return nn_books["NN_Rating"].loc[nn_books["isbn"] == isbn][0]
-        return DEFAULT_RATING
-
-def getUserRatings(user_id: int, filename: str = RATINGS) -> pd.DataFrame:
-    """Read ratings CSV and return specified user's ratings."""
-
-    users_ratings_df = pd.read_csv(filename)
-    return  users_ratings_df.loc[users_ratings_df["uid"] == user_id]
+    return avg_cluster_ratings
 
 def askForPreload(k, processed_users) -> pd.DataFrame:
     while True:
@@ -246,3 +170,65 @@ def askForPreload(k, processed_users) -> pd.DataFrame:
     print(f"Clustering with {k} clusters took {int(elapsed_time//60)} minutes and {int(round(elapsed_time % 60, 0))} seconds.")
     cluster_assigned_users.to_csv(CLUSTER_ASSIGNED_USERS, index=False)
     return cluster_assigned_users
+
+def calculateCombinedScoresv2(rel_user_ratings: pd.DataFrame, 
+                              rel_unrated_books: pd.DataFrame,
+                              rel_clust_rated_books: pd.DataFrame = pd.DataFrame()
+                              ) -> pd.DataFrame:
+                              
+    """Function that accepts as inputs the reply from ElasticSearch, user's id
+    and all of their ratings and returns a sorted list of documents with the
+    updated combined scores, which are calculated using the combinedScoreFunc."""
+
+    #print(f"Number of relevant user ratings: {len(rel_user_ratings)}")
+    #print(f"Number of relevant cluster ratings: {len(rel_clust_rated_books)}")
+    #print(f"Number of relevant books not rated by cluster: {len(rel_unrated_books)}")
+
+    if len(rel_user_ratings) > 0:
+        #if "score" in rel_user_ratings.columns:
+        #    rel_user_ratings.drop("score", axis=1, inplace=True)
+        rel_user_ratings["score"] = [combinedScoreFunc(book[1]["norm_es_score"], book[1]["user_rating"]) for book in rel_user_ratings.iterrows()]
+    
+    if len(rel_clust_rated_books) > 0:
+        rel_clust_rated_books["score"] = [combinedScoreFunc(book[1]["norm_es_score"], book[1]["cluster_rating"]) for book in rel_clust_rated_books.iterrows()]
+        
+    if len(rel_unrated_books) > 0:
+        #if "score" in rel_unrated_books.columns:
+        #    rel_unrated_books.drop("score", axis=1, inplace=True)
+        if "NN_Rating" in rel_unrated_books.columns:
+            rel_unrated_books["score"] = [combinedScoreFunc(book[1]["norm_es_score"], book[1]["NN_Rating"]) for book in rel_unrated_books.iterrows()]
+        else:
+            rel_unrated_books["score"] = [combinedScoreFunc(book[1]["norm_es_score"], DEFAULT_RATING) for book in rel_unrated_books.iterrows()]
+
+    combined_scores = pd.concat([rel_user_ratings, rel_clust_rated_books, rel_unrated_books], ignore_index=True).drop(["uid", "_merge"], axis=1).sort_values(by="score", ascending=False)
+            
+    # Sort the documents and only keep the best 10%
+    combined_scores.sort_values(by="score", ascending=False).head(len(combined_scores)//10)
+
+    # Rearrange columns of df
+    reorg_cols = ["score", "norm_es_score", "user_rating", "isbn", "book_title", "book_author",
+                     "year_of_publication", "publisher", "summary", "category"]
+
+    if "cluster" in combined_scores.columns:
+        combined_scores.drop("cluster", axis=1, inplace=True)
+        reorg_cols = reorg_cols[:3] + ["cluster_rating"] + reorg_cols[3:]
+        if "NN_Rating" in combined_scores.columns:
+            reorg_cols = reorg_cols[:4] + ["NN_Rating"] + reorg_cols[4:]
+
+    combined_scores = combined_scores[reorg_cols]
+
+    return combined_scores
+
+def getPredictedRatings(rel_unrated_books: pd.DataFrame,
+                        model: Sequential, vocab_size, max_length)\
+                            -> tuple[pd.DataFrame, pd.DataFrame]:
+    
+    # Get books in es_books but not in users_clust_avg_ratings
+    summaries = rel_unrated_books["summary"].to_list()
+    # Prepare their summaries for nn
+    X = prepareSummaries(summaries, vocab_size, max_length)
+    # Predict book values
+    predictions = model.predict(X)
+    rel_unrated_books["NN_Rating"] = predictions
+
+    return rel_unrated_books
