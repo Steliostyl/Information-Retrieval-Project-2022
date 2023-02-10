@@ -50,9 +50,9 @@ def main():
     
     # Connect to the ElasticSearch cluster
     es = Elasticsearch(
-        "http://localhost:9200",
-        #ssl_assert_fingerprint=CERT_FINGERPRINT,
-        #basic_auth=("elastic", ES_PASSWORD)
+        "https://localhost:9200",
+        ssl_assert_fingerprint=CERT_FINGERPRINT,
+        basic_auth=("elastic", ES_PASSWORD)
         )
 
     # Create a new index in ElasticSearch called books
@@ -104,13 +104,17 @@ def main():
     print("Creating processed users CSV...")
     processed_users = functions.preLoadProcUsers()
 
+    # Use kMeans? If set to false, kPrototypes is used.
+    kM = True
     # Plot elbow curve to help determine optimal number of clusters
-    #print("\nPlotting elbow curve...")
-    #clustering.plot_elbow_curve(2, 12, 10_000, processed_users)
-    k = 3#_input("Choose number of clusters to use: ", int)
+    print("\nPlotting elbow curve...")
+    clustering.plot_elbow_curve(2, 12, 10_000, processed_users, kM)
+    k = _input("Choose number of clusters to use: ", int)
 
     # Generate or load cluster assignement from file and calculate average cluster ratings for their rated books.
-    cluster_assignement = functions.preLoadClusterAssignement(k, processed_users)
+    cluster_assignement = functions.preLoadClusterAssignement(k, processed_users, kM)
+    cluster_totals = cluster_assignement.groupby(by="cluster").count()["User_ID"].to_list()
+    [print(f"Cluster {i} has {cluster_totals[i]} users") for i in range(k)]
 
     print("Calculating average cluster ratings...")
     avg_clust_ratings = functions.createAvgClusterRatings(cluster_assignement)
@@ -127,9 +131,13 @@ def main():
         rel_unrated_books = df[df['_merge'] == 'left_only']
         # Get intersection of es_books and users_clust_avg_ratings
         rel_clust_rated_books = df[df['_merge'] == 'both']
+        print(f"\nIn total, all the clusters have {len(avg_clust_ratings)} average book ratings (some are books have been rated by multiple clusters).")
+        print(f"Cluster {users_cluster} has rated {len(users_clust_avg_ratings)} books.")
+        print(f"Of which {len(rel_clust_rated_books)} are in the elasticsearch reply.")
+        print(f"The unrated books of the es reply are {len(rel_unrated_books)}.")
     except:
         rel_clust_rated_books = pd.DataFrame()
-        users_cluster = -1
+        #users_cluster = -1
         print(f"User {user_id} wasn't found in BX-Users.csv")
     
     print("Re-calculating combined scores using user's cluster's average book ratings...")

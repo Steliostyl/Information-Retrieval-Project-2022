@@ -145,7 +145,7 @@ def trainSingleNetwork(books, book_ratings, vocab_size: int, max_length: int, cl
     # Print model summary
     model.summary()
     # Start training
-    history = model.fit(X, Y, validation_split=0.3, epochs=5, batch_size=10, verbose=1)
+    history = model.fit(X, Y, validation_split=0.3, epochs=5, batch_size=5, verbose=1)
     plotHistory(history)
     
     plotHistory(history)
@@ -184,8 +184,8 @@ def classifier_model_1(vocab_size, max_length):
     model = Sequential()
     model.add(Embedding(input_dim=vocab_size, output_dim=256,input_length=max_length))
     model.add(Flatten())
-    model.add(Dense(256, activation="relu"))
-    model.add(Dense(128, activation="relu"))
+    #model.add(Dense(256, activation="relu"))
+    #model.add(Dense(128, activation="relu"))
     model.add(Dense(5, activation='softmax'))
     model.compile(optimizer='adam',loss="binary_crossentropy",metrics=['acc'])
     return model
