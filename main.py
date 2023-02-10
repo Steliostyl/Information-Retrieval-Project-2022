@@ -50,9 +50,9 @@ def main():
     
     # Connect to the ElasticSearch cluster
     es = Elasticsearch(
-        "https://localhost:9200",
-        ssl_assert_fingerprint=CERT_FINGERPRINT,
-        basic_auth=("elastic", ES_PASSWORD)
+        "http://localhost:9200",
+        #ssl_assert_fingerprint=CERT_FINGERPRINT,
+        #basic_auth=("elastic", ES_PASSWORD)
         )
 
     # Create a new index in ElasticSearch called books
@@ -73,7 +73,7 @@ def main():
     elastic_books.to_csv(ELASTIC_BOOKS, index=False)
 
     # Print results summary
-    print(f"\nElasticsearch returned {len(es_reply['hits'])} books. The 5 best matches are:")
+    print(f"\nElasticsearch returned {len(es_reply['hits'])} books. The 10 best matches are:")
     print(elastic_books.head(10))
 
     # Get user ratings
@@ -92,7 +92,7 @@ def main():
     combined_scores.to_csv(SCORES_NO_CLUST, index=False)
 
     # Print the scores of the 5 best matches
-    print("\nBest 5 matches without clustering:\n")
+    print("\nBest 10 matches without clustering:\n")
     print(combined_scores.head(10))
 
     input("\nPress enter to continue to Clustering...\n")
@@ -130,15 +130,17 @@ def main():
         # Get books in es_books but not in users_clust_avg_ratings
         rel_unrated_books = df[df['_merge'] == 'left_only']
         # Get intersection of es_books and users_clust_avg_ratings
-        rel_clust_rated_books = df[df['_merge'] == 'both']
+        rel_clust_rated_books = df[df['_merge'] == 'both']    
+        avg_r_rel_clust = rel_clust_rated_books["cluster_rating"].mean()
         print(f"\nIn total, all the clusters have {len(avg_clust_ratings)} average book ratings (some are books have been rated by multiple clusters).")
         print(f"Cluster {users_cluster} has rated {len(users_clust_avg_ratings)} books.")
-        print(f"Of which {len(rel_clust_rated_books)} are in the elasticsearch reply.")
+        print(f"Of which {len(rel_clust_rated_books)} are in the elasticsearch reply and are therefore related to our search.")
+        print(f"The related books have an average rating of {avg_r_rel_clust}")
         print(f"The unrated books of the es reply are {len(rel_unrated_books)}.")
     except:
         rel_clust_rated_books = pd.DataFrame()
-        #users_cluster = -1
         print(f"User {user_id} wasn't found in BX-Users.csv")
+
     
     print("Re-calculating combined scores using user's cluster's average book ratings...")
     combined_scores_clusters = functions.calculateCombinedScoresv2(rel_user_ratings, rel_unrated_books, rel_clust_rated_books)
@@ -176,7 +178,6 @@ def main():
     combined_scores_clusters_nn.to_csv(SCORES_W_CLUST_AND_NN_EMB, index=False)  
     print("\nBest 10 matches with clustering and neural network:\n")
     print(combined_scores_clusters_nn.head(10))
-
 
     ## Use a Doc2Vec model to turn summaries into vectors and then train and use another model to predict the missing ratings
     #doc2vecModel = doc2vec.getDoc2VecModel(books)

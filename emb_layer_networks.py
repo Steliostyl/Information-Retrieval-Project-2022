@@ -64,7 +64,7 @@ def base_model_1(vocab_size, max_length):
     model.add(Flatten())
     model.add(Dense(128, activation='relu'))
     model.add(Dense(64, activation='relu'))
-    model.add(Dense(1, activation='relu'))
+    model.add(Dense(1, activation='linear'))
     model.compile(optimizer='adam',loss="mse",metrics=['mae'])
     return model
 

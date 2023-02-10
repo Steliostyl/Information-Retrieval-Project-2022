@@ -199,7 +199,8 @@ def calculateCombinedScoresv2(rel_user_ratings: pd.DataFrame,
         #if "score" in rel_unrated_books.columns:
         #    rel_unrated_books.drop("score", axis=1, inplace=True)
         if "NN_Rating" in rel_unrated_books.columns:
-            rel_unrated_books["score"] = [combinedScoreFunc(book[1]["norm_es_score"], book[1]["NN_Rating"]) for book in rel_unrated_books.iterrows()]
+            # Clamp predictions in [0, 10]
+            rel_unrated_books["score"] = [combinedScoreFunc(book[1]["norm_es_score"], max(min(10, book[1]["NN_Rating"]), 0)) for book in rel_unrated_books.iterrows()]
         else:
             rel_unrated_books["score"] = [combinedScoreFunc(book[1]["norm_es_score"], DEFAULT_RATING) for book in rel_unrated_books.iterrows()]
 
@@ -209,8 +210,8 @@ def calculateCombinedScoresv2(rel_user_ratings: pd.DataFrame,
     combined_scores.sort_values(by="score", ascending=False).head(len(combined_scores)//10)
 
     # Rearrange columns of df
-    reorg_cols = ["score", "norm_es_score", "user_rating", "isbn", "book_title", "book_author",
-                     "year_of_publication", "publisher", "summary", "category"]
+    reorg_cols = ["score", "norm_es_score", "user_rating", "isbn", "book_title"]
+                  #"book_author", "year_of_publication", "publisher", "summary", "category"]
 
     if "cluster" in combined_scores.columns:
         combined_scores.drop("cluster", axis=1, inplace=True)
